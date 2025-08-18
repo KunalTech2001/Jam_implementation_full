@@ -1,0 +1,49 @@
+# JAM Protocol Configuration
+
+# Protocol Constants
+protocol:
+  # Epoch length for tiny tests
+  tiny_epoch_length: 12
+  # Epoch length for full tests
+  full_epoch_length: 600
+  # Submission phase length for tiny tests
+  tiny_submission_phase: 11
+  # Submission phase length for full tests
+  full_submission_phase: 500
+  # Maximum ticket attempts for tiny tests
+  tiny_max_attempts: 3
+  # Maximum ticket attempts for full tests
+  full_max_attempts: 2
+
+# Rust Server Configuration
+rust_server:
+  # Base URL for the Rust server
+  base_url: "http://127.0.0.1:3000"
+  # Endpoints
+  endpoints:
+    compose_gamma_z: "/compose_gamma_z"
+    ring_vrf_verify: "/verifier/ring_vrf_verify_payload"
+  # Timeout settings
+  timeout: 30
+  retries: 3
+
+# Test Configuration
+test:
+  # Test vector directories
+  directories:
+    tiny: "../Jam/jam-test-vectors/stf/safrole/tiny"
+    full: "../Jam/jam-test-vectors/stf/safrole/full"
+  # Test runner settings
+  fail_fast: false
+  verbose: true
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "jam_protocol.log"
+
+# Development Settings
+development:
+  debug: false
+  profile: false 
