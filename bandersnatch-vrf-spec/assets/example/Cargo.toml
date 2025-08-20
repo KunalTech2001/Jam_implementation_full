@@ -1,0 +1,29 @@
+[package]
+name = "ark-vrf-bandersnatch-example"
+version = "0.1.0"
+edition = "2021"
+publish =  false
+
+[dependencies]
+ark-vrf ={ version = "0.1.0", features = ["bandersnatch", "ring"] }
+hex = "0.4"
+getrandom = { version = "0.2.0", features = ["js"] }
+wasm-bindgen = "0.2.100"
+js-sys = "0.3.77"
+ark-serialize = "0.5.0"
+bandersnatch = "0.1.1"
+axum = "0.8.4"
+serde = { version = "1.0.219", features = ["derive"] }
+tokio = { version = "1.46.1", features = ["full"] }
+hyper = "1.6.0"
+uuid = { version = "1.7.0", features = ["v4"] }
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+
+# Deterministic ring proof.
+# WARNING: not for production, used to produce specification test vectors.
+[features]
+test-vectors = ["ark-vrf/test-vectors"]
+

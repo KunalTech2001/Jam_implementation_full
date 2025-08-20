@@ -27,19 +27,36 @@ class SafroleManager:
     """Main manager class for JAM protocol state transitions."""
     
     def __init__(self, initial_state, test_vector_file_path=None):
-        """Initialize the SafroleManager with initial state."""
+        """Initialize the SafroleManager with initial state.
+        
+        Args:
+            initial_state: The initial state dictionary
+            test_vector_file_path: Optional path to test vector file for test mode
+        """
         self.state = deep_clone(initial_state)
-        is_tiny = test_vector_file_path and "/tiny/" in test_vector_file_path
+        is_tiny = test_vector_file_path and "/tiny/" in str(test_vector_file_path)
 
-        self.state["E"] = 12 if is_tiny else 600
-        self.state["Y"] = 11 if is_tiny else 500
-        self.state["N"] = 3 if is_tiny else 2
+        # Set default values only if they don't exist in initial_state
+        if "E" not in self.state:
+            self.state["E"] = 12 if is_tiny else 12  # Epoch length
+        if "Y" not in self.state:
+            self.state["Y"] = 11 if is_tiny else 11  # Submission period
+        if "N" not in self.state:
+            self.state["N"] = 3 if is_tiny else 3    # Number of validators
 
+        # Initialize gamma_a with proper type conversion if it exists
         initial_gamma_a = self.state.get("gamma_a", [])
-        self.state["gamma_a"] = [
-            {"index": t["attempt"], "randomness": hex_to_bytes(t["id"]), "proof": b""}
-            for t in initial_gamma_a
-        ]
+        if initial_gamma_a and isinstance(initial_gamma_a, list):
+            self.state["gamma_a"] = [
+                {
+                    "index": t.get("attempt", i),  # Use existing attempt or index as fallback
+                    "randomness": hex_to_bytes(t["id"]) if isinstance(t.get("id"), str) else t.get("id", b""),
+                    "proof": t.get("proof", b"")
+                }
+                for i, t in enumerate(initial_gamma_a)
+            ]
+        else:
+            self.state["gamma_a"] = []
 
     def batch_ring_vrf_verify(self, gamma_z, ring_set, eta2_prime, extrinsic):
         """Perform batch ring VRF verification."""
@@ -62,7 +79,7 @@ class SafroleManager:
     def process_block(self, block_input):
         """Process a block and update the state."""
         pre_state = self.state
-
+        print(f"Prestate state****************************: {pre_state}");
         if block_input["slot"] <= pre_state["tau"]:
             raise ValueError("bad_slot")
 
@@ -154,7 +171,7 @@ class SafroleManager:
             current_state["gamma_a"] = current_state["gamma_a"][: current_state["E"]]
 
         if next_epoch > prev_epoch:
-            current_state["lambda"] = deep_clone(pre_state["kappa"])
+            current_state["lambda_"] = deep_clone(pre_state["kappa"])
             current_state["kappa"] = deep_clone(pre_state["gamma_k"])
             current_state["gamma_k"] = process_validator_keys_for_offenders(
                 pre_state["iota"], pre_state["post_offenders"]
