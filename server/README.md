@@ -95,7 +95,6 @@ This server acts as a bridge between external systems and the JAM protocol's saf
 ### Starting the Server
 
 ```bash
-cd server
 # python app.py
 python3 -m server.app
 ```
