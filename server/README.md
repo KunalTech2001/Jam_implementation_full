@@ -96,7 +96,8 @@ This server acts as a bridge between external systems and the JAM protocol's saf
 
 ```bash
 cd server
-python app.py
+# python app.py
+python3 -m server.app
 ```
 
 The server will start on `http://localhost:8000` with auto-reload enabled.
