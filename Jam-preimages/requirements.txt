@@ -1,0 +1,2 @@
+# No external dependencies required
+# Python 3.6+ with built-in hashlib.blake2b support

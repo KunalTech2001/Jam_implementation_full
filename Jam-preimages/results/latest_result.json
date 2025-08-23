@@ -1,0 +1,33 @@
+{
+  "input": {
+    "preimages": [
+      {
+        "requester": 1,
+        "blob": "0x1234567890abcdef"
+      },
+      {
+        "requester": 1,
+        "blob": "0xdeadbeefcafebabe"
+      }
+    ],
+    "slot": 1755948353
+  },
+  "pre_state": {
+    "accounts": [],
+    "statistics": []
+  },
+  "generated_post_state": {
+    "accounts": [
+      {
+        "id": 1,
+        "data": {
+          "preimages": [],
+          "lookup_meta": []
+        }
+      }
+    ],
+    "statistics": []
+  },
+  "expected_post_state": null,
+  "verified": true
+}
