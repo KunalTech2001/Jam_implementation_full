@@ -53,16 +53,36 @@ updated_state_path = os.path.join(script_dir, "updated_state.json")
 original_sample_data: Dict[str, Any] = {}
 
 # Pydantic models for request/response validation
-class BlockInput(BaseModel):
-    slot: int = Field(..., description="Block slot number")
-    entropy: str = Field(..., description="VRF output entropy")
-    extrinsic: List[Dict[str, Any]] = Field(default=[], description="Extrinsic data")
+class BlockHeader(BaseModel):
+    parent: str
+    parent_state_root: str
+    extrinsic_hash: str
+    slot: int
+    epoch_mark: Optional[Any] = None
+    tickets_mark: Optional[Any] = None
+    offenders_mark: List[Any] = []
+    author_index: int
+    entropy_source: str
+    seal: str
 
-# Remove the PreState and StateRequest models since we're loading from file
-# Keep only the models we actually need
+class BlockDisputes(BaseModel):
+    verdicts: List[Any] = []
+    culprits: List[Any] = []
+    faults: List[Any] = []
+
+class BlockExtrinsic(BaseModel):
+    tickets: List[Any] = []
+    preimages: List[Any] = []
+    guarantees: List[Any] = []
+    assurances: List[Any] = []
+    disputes: BlockDisputes
+
+class Block(BaseModel):
+    header: BlockHeader
+    extrinsic: BlockExtrinsic
 
 class BlockProcessRequest(BaseModel):
-    input: BlockInput
+    block: Block
 
 class StateResponse(BaseModel):
     success: bool
@@ -219,8 +239,9 @@ async def process_block(request: BlockProcessRequest):
     """
     Process a block using the safrole component.
     
-    This endpoint takes only the input data and uses the current state
-    from the safrole manager to process the block and return results.
+    This endpoint takes block data with header and extrinsic information,
+    extracts the necessary fields, and processes the block using the current
+    state from the safrole manager.
     """
     global safrole_manager
    
@@ -231,20 +252,36 @@ async def process_block(request: BlockProcessRequest):
         )
     
     try:
-        logger.info(f"Processing block for slot {request.input.slot}")
+        logger.info(f"Processing block for slot {request.block.header.slot}")
+        
+        # Debug: Print the full request structure
+        logger.debug(f"Full request structure: {request.dict()}")
+        
+        # Convert extrinsic to proper format - check what your safrole_manager expects
+        extrinsic_data = request.block.extrinsic.dict()
+        logger.debug(f"Extrinsic data type: {type(extrinsic_data)}")
+        logger.debug(f"Extrinsic data: {extrinsic_data}")
         
         # Convert request to the format expected by process_block
+        # The SafroleManager expects extrinsic to be a list of tickets
+        # Extract the tickets from the extrinsic structure
+        tickets_list = extrinsic_data.get("tickets", [])
+        
         block_input = {
-            "slot": request.input.slot,
-            "entropy": request.input.entropy,
-            "extrinsic": request.input.extrinsic
+            "slot": request.block.header.slot,
+            "entropy": request.block.header.entropy_source,
+            "extrinsic": tickets_list  # Pass the tickets list, not the full extrinsic dict
         }
 
+        logger.info(f"Block input prepared: {block_input}")
+        
+        # Debug: Check safrole manager state type
+        logger.debug(f"Safrole manager state type: {type(safrole_manager.state)}")
         
         # Process the block using current state
         result = safrole_manager.process_block(block_input) 
         
-        logger.info(f"Block processed successfully for slot {request.input.slot}")
+        logger.info(f"Block processed successfully for slot {request.block.header.slot}")
         
         # Create/update the updated_state.json file with new state
         try:
@@ -271,9 +308,11 @@ async def process_block(request: BlockProcessRequest):
             success=True,
             message="Block processed successfully",
             data={
-                "header": result["header"],
-                "post_state": result["post_state"],
-                "current_slot": safrole_manager.state.get("tau", 0)
+                "header": result.get("header") if isinstance(result, dict) else None,
+                "post_state": result.get("post_state") if isinstance(result, dict) else None,
+                "current_slot": safrole_manager.state.get("tau", 0) if isinstance(safrole_manager.state, dict) else 0,
+                "result_type": str(type(result)),
+                "result": str(result)[:200]  # First 200 chars for debugging
             }
         )
         
@@ -286,6 +325,9 @@ async def process_block(request: BlockProcessRequest):
         )
     except Exception as e:
         logger.error(f"Block processing failed: {str(e)}")
+        logger.error(f"Exception type: {type(e)}")
+        import traceback
+        logger.error(f"Full traceback: {traceback.format_exc()}")
         raise HTTPException(
             status_code=500,
             detail=f"Block processing failed: {str(e)}"
@@ -361,6 +403,7 @@ async def get_updated_state():
             status_code=500,
             detail=f"Failed to retrieve updated state: {str(e)}"
         )
+
 @app.post("/reload-sample-data")
 async def reload_sample_data():
     """Reload sample data from file and reinitialize safrole manager.
