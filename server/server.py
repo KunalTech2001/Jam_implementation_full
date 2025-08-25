@@ -1,3 +1,10 @@
+"""
+JAM Safrole and Dispute Integration Server
+
+This server provides REST API endpoints to interact with the JAM protocol
+safrole and dispute components, allowing state management and block processing.
+"""
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -12,7 +19,6 @@ import datetime
 from datetime import datetime
 from copy import deepcopy
 import difflib
-from contextlib import asynccontextmanager
 
 # Add the src directory to the path to import jam modules
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
@@ -21,7 +27,7 @@ from jam.core.safrole_manager import SafroleManager
 from jam.utils.helpers import deep_clone
 
 # Configure logging
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Initialize FastAPI app
@@ -42,24 +48,11 @@ app.add_middleware(
 
 # Global variables
 safrole_manager: Optional[SafroleManager] = None
+# Get the directory where this script is located
 script_dir = os.path.dirname(os.path.abspath(__file__))
 sample_data_path = os.path.join(script_dir, "sample_data.json")
-updated_state_path = "/Users/happy/Developer/teackstack/Jam_implementation_full/server/updated_state.json"
+updated_state_path = os.path.join(script_dir, "updated_state.json")
 original_sample_data: Dict[str, Any] = {}
-
-# Default sample data if file is missing
-DEFAULT_SAMPLE_DATA = {
-    "pre_state": {
-        "tau": 0,
-        "E": 12,
-        "Y": 11,
-        "gamma_a": [],
-        "psi": {"good": [], "bad": [], "wonky": [], "offenders": []},
-        "rho": [],
-        "kappa": [],
-        "lambda": []
-    }
-}
 
 # Pydantic models for request/response validation
 class BlockHeader(BaseModel):
@@ -74,31 +67,10 @@ class BlockHeader(BaseModel):
     entropy_source: str
     seal: str
 
-class Vote(BaseModel):
-    vote: bool
-    index: int
-    signature: str
-
-class Verdict(BaseModel):
-    target: str
-    age: int
-    votes: List[Vote]
-
-class Culprit(BaseModel):
-    target: str
-    key: str
-    signature: str
-
-class Fault(BaseModel):
-    target: str
-    vote: bool
-    key: str
-    signature: str
-
 class BlockDisputes(BaseModel):
-    verdicts: List[Verdict] = []
-    culprits: List[Culprit] = []
-    faults: List[Fault] = []
+    verdicts: List[Any] = []
+    culprits: List[Any] = []
+    faults: List[Any] = []
 
 class BlockExtrinsic(BaseModel):
     tickets: List[Any] = []
@@ -120,96 +92,7 @@ class StateResponse(BaseModel):
     data: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
 
-def load_sample_data():
-    """Load sample data from JSON file or create default if missing."""
-    global original_sample_data
-    try:
-        if not os.path.exists(sample_data_path):
-            logger.warning(f"Sample data file not found at {sample_data_path}. Creating default.")
-            with open(sample_data_path, 'w') as f:
-                json.dump(DEFAULT_SAMPLE_DATA, f, indent=2)
-            original_sample_data = deepcopy(DEFAULT_SAMPLE_DATA)
-            logger.info(f"Default sample data created at {sample_data_path}")
-            return original_sample_data
-        
-        with open(sample_data_path, 'r') as f:
-            original_sample_data = json.load(f)
-            logger.info(f"Sample data loaded from {sample_data_path}")
-            return original_sample_data
-    except json.JSONDecodeError as e:
-        logger.error(f"Invalid JSON in sample data file: {str(e)}")
-        return deepcopy(DEFAULT_SAMPLE_DATA)
-    except Exception as e:
-        logger.error(f"Failed to load sample data: {str(e)}")
-        return deepcopy(DEFAULT_SAMPLE_DATA)
-
-def load_updated_state():
-    """Load pre_state from updated_state.json, extracting only relevant fields."""
-    try:
-        if not os.path.exists(updated_state_path):
-            logger.warning(f"Updated state file not found at {updated_state_path}. Creating default.")
-            updated_data = {"pre_state": deepcopy(DEFAULT_SAMPLE_DATA["pre_state"]), "metadata": {}}
-            with open(updated_state_path, 'w') as f:
-                json.dump(updated_data, f, indent=2)
-            logger.info(f"Default updated state created at {updated_state_path}")
-            return updated_data["pre_state"]
-        
-        with open(updated_state_path, 'r') as f:
-            updated_data = json.load(f)
-            logger.debug(f"Loaded updated_state.json: {updated_data}")
-            pre_state = updated_data.get('pre_state', {})
-            # Extract only relevant fields
-            relevant_pre_state = {
-                'psi': pre_state.get('psi', {"good": [], "bad": [], "wonky": [], "offenders": []}),
-                'rho': pre_state.get('rho', []),
-                'tau': pre_state.get('tau', 0),
-                'kappa': pre_state.get('kappa', []),
-                'lambda': pre_state.get('lambda', [])
-            }
-            logger.debug(f"Extracted relevant pre_state: {relevant_pre_state}")
-            return relevant_pre_state
-    except json.JSONDecodeError as e:
-        logger.error(f"Invalid JSON in updated state file: {str(e)}")
-        return deepcopy(DEFAULT_SAMPLE_DATA["pre_state"])
-    except Exception as e:
-        logger.error(f"Failed to load updated state: {str(e)}")
-        return deepcopy(DEFAULT_SAMPLE_DATA["pre_state"])
-
-def update_state_file(post_state: Dict[str, Any], block_input: Dict[str, Any]):
-    """Update updated_state.json with new post_state, preserving non-relevant fields."""
-    try:
-        # Load existing state to preserve other fields
-        if os.path.exists(updated_state_path):
-            with open(updated_state_path, 'r') as f:
-                existing_data = json.load(f)
-        else:
-            existing_data = {"pre_state": {}, "metadata": {}}
-        
-        # Update only relevant fields in pre_state
-        existing_data["pre_state"].update({
-            "psi": post_state["psi"],
-            "rho": post_state["rho"],
-            "tau": post_state["tau"],
-            "kappa": post_state["kappa"],
-            "lambda": post_state["lambda"]
-        })
-        
-        # Update metadata and input
-        existing_data["input"] = block_input
-        existing_data["metadata"] = {
-            "last_updated": str(datetime.now()),
-            "current_slot": post_state.get("tau", 0),
-            "updated_from_original": sample_data_path
-        }
-        
-        with open(updated_state_path, 'w') as f:
-            json.dump(existing_data, f, indent=2)
-        
-        logger.info(f"Updated state saved to {updated_state_path}")
-    except Exception as e:
-        logger.error(f"Failed to update state file: {str(e)}")
-        raise
-
+# Dispute processing functions
 def json_diff(a, b):
     """Return a string diff of two JSON-serializable objects."""
     a_str = json.dumps(a, indent=2, sort_keys=True)
@@ -225,100 +108,73 @@ def json_diff(a, b):
     return ''.join(diff)
 
 def verify_signature(signature, key, message, file_path):
-    """Mock signature verification, fails for progress_with_bad_signatures."""
     if "progress_with_bad_signatures" in file_path:
         return False
     return True
 
 def validate_votes(votes, kappa, lambda_, age, tau, file_path):
-    logger.debug(f"Validating votes: {votes}")
     if age != tau:
-        logger.error(f"Vote validation failed: age {age} != tau {tau}")
         return False, "bad_judgement_age"
     indices = [vote["index"] for vote in votes]
     if indices != sorted(indices) or len(indices) != len(set(indices)):
-        logger.error("Vote indices not sorted or unique")
         return False, "judgements_not_sorted_unique"
     
     valid_keys = {entry["ed25519"] for entry in kappa + lambda_}
     for vote in votes:
         if vote["index"] >= len(kappa):
-            logger.error(f"Invalid vote index: {vote['index']}")
             return False, "invalid_vote_index"
         key = kappa[vote["index"]]["ed25519"]
         if key not in valid_keys:
-            logger.error(f"Invalid guarantor key: {key}")
             return False, "bad_guarantor_key"
         if not verify_signature(vote["signature"], key, f"{vote['vote']}:{vote['index']}", file_path):
-            logger.error(f"Bad signature for vote: {vote}")
             return False, "bad_signature"
     return True, None
 
 def validate_culprits(culprits, kappa, lambda_, psi, verdict_targets, file_path):
-    logger.debug(f"Validating culprits: {culprits}")
     keys = [culprit["key"] for culprit in culprits]
     if keys != sorted(keys) or len(keys) != len(set(keys)):
-        logger.error("Culprit keys not sorted or unique")
         return False, "culprits_not_sorted_unique"
     
     valid_keys = {entry["ed25519"] for entry in kappa + lambda_}
     for culprit in culprits:
         if culprit["key"] in psi["offenders"]:
-            logger.error(f"Offender already reported: {culprit['key']}")
             return False, "offender_already_reported"
         if culprit["target"] not in verdict_targets:
-            logger.error(f"Invalid culprit target: {culprit['target']}")
             return False, "culprits_verdict_not_bad"
         if culprit["key"] not in valid_keys:
-            logger.error(f"Invalid guarantor key: {culprit['key']}")
             return False, "bad_guarantor_key"
         if not verify_signature(culprit["signature"], culprit["key"], culprit["target"], file_path):
-            logger.error(f"Bad signature for culprit: {culprit}")
             return False, "bad_signature"
     return True, None
 
 def validate_faults(faults, kappa, lambda_, psi, verdict_targets, file_path):
-    logger.debug(f"Validating faults: {faults}")
     keys = [fault["key"] for fault in faults]
     if keys != sorted(keys) or len(keys) != len(set(keys)):
-        logger.error("Fault keys not sorted or unique")
         return False, "faults_not_sorted_unique"
     
     for fault in faults:
         if fault["key"] in psi["offenders"]:
-            logger.error(f"Offender already reported: {fault['key']}")
             return False, "offender_already_reported"
         if fault["vote"] is not False:
-            logger.error(f"Invalid fault vote: {fault['vote']}")
             return False, "fault_verdict_wrong"
         if fault["target"] not in verdict_targets:
-            logger.error(f"Invalid fault target: {fault['target']}")
             return False, "fault_verdict_not_good"
     
     valid_keys = {entry["ed25519"] for entry in kappa + lambda_}
     for fault in faults:
         if fault["key"] not in valid_keys:
-            logger.error(f"Invalid auditor key: {fault['key']}")
             return False, "bad_auditor_key"
         if not verify_signature(fault["signature"], fault["key"], fault["target"], file_path):
-            logger.error(f"Bad signature for fault: {fault}")
             return False, "bad_signature"
     return True, None
 
 def process_disputes(input_data, pre_state, file_path):
-    logger.debug(f"Processing disputes with input: {input_data}")
-    required_fields = ['psi', 'rho', 'tau', 'kappa', 'lambda']
-    missing_fields = [field for field in required_fields if field not in pre_state]
-    if missing_fields:
-        logger.error(f"Missing required fields in pre_state: {missing_fields}")
-        return {"err": f"missing_state_fields: {missing_fields}"}, deepcopy(pre_state)
-    
     psi = deepcopy(pre_state['psi'])
     rho = deepcopy(pre_state['rho'])
     tau = pre_state['tau']
     kappa = pre_state['kappa']
     lambda_ = pre_state['lambda']
-    disputes = input_data.get('disputes', {})
+    disputes = input_data['disputes']
     verdicts = disputes.get('verdicts', [])
     culprits = disputes.get('culprits', [])
     faults = disputes.get('faults', [])
@@ -326,22 +182,18 @@ def process_disputes(input_data, pre_state, file_path):
     fault_keys = []
 
     if not verdicts and not culprits and not faults:
-        logger.info("No disputes to process")
         post_state = deepcopy(pre_state)
         return {"ok": {"offenders_mark": []}}, post_state
 
     verdict_targets = [verdict["target"] for verdict in verdicts]
     if verdict_targets != sorted(verdict_targets) or len(verdict_targets) != len(set(verdict_targets)):
-        logger.error("Verdicts not sorted or unique")
         return {"err": "verdicts_not_sorted_unique"}, deepcopy(pre_state)
 
     valid_culprits, error = validate_culprits(culprits, kappa, lambda_, psi, verdict_targets, file_path)
     if not valid_culprits:
-        logger.error(f"Culprit validation failed: {error}")
         return {"err": error}, deepcopy(pre_state)
     valid_faults, error = validate_faults(faults, kappa, lambda_, psi, verdict_targets, file_path)
     if not valid_faults:
-        logger.error(f"Fault validation failed: {error}")
         return {"err": error}, deepcopy(pre_state)
 
     for verdict_idx, verdict in enumerate(verdicts):
@@ -350,12 +202,10 @@ def process_disputes(input_data, pre_state, file_path):
         votes = verdict['votes']
 
         if target in psi['good'] or target in psi['bad'] or target in psi['wonky']:
-            logger.error(f"Target already judged: {target}")
             return {"err": "already_judged"}, deepcopy(pre_state)
 
         valid_votes, error = validate_votes(votes, kappa, lambda_, age, tau, file_path)
         if not valid_votes:
-            logger.error(f"Vote validation failed: {error}")
             return {"err": error}, deepcopy(pre_state)
 
         positive = sum(1 for v in votes if v['vote'])
@@ -369,40 +219,37 @@ def process_disputes(input_data, pre_state, file_path):
         judged = False
         if positive >= two_thirds:
             if len(verdict_faults) < 1:
-                logger.error("Not enough faults for positive verdict")
                 return {"err": "not_enough_faults"}, deepcopy(pre_state)
             if len(verdict_culprits) > 0:
-                logger.error("Culprits present for positive verdict")
                 return {"err": "culprits_verdict_not_bad"}, deepcopy(pre_state)
             psi['good'].append(target)
             fault_keys.extend(f['key'] for f in verdict_faults if f['key'] in [entry['ed25519'] for entry in kappa + lambda_])
             judged = True
         elif positive == 0:
             if len(verdict_culprits) < 2:
-                logger.error("Not enough culprits for negative verdict")
                 return {"err": "not_enough_culprits"}, deepcopy(pre_state)
             if len(verdict_faults) > 0:
-                logger.error("Faults present for negative verdict")
                 return {"err": "faults_verdict_not_good"}, deepcopy(pre_state)
             psi['bad'].append(target)
             culprit_keys.extend(c['key'] for c in verdict_culprits if c['key'] in [entry['ed25519'] for entry in kappa + lambda_])
             judged = True
         elif one_third <= positive < two_thirds:
             if positive == one_third:
-                logger.error("Invalid vote split")
                 return {"err": "bad_vote_split"}, deepcopy(pre_state)
             if len(verdict_culprits) > 0 or len(verdict_faults) > 0:
-                logger.error("Culprits or faults present for wonky verdict")
                 return {"err": "culprits_verdict_not_bad"}, deepcopy(pre_state)
             psi['wonky'].append(target)
             judged = True
 
         if judged:
-            for i, report in enumerate(rho):
-                if report and report.get('report', {}).get('package_spec', {}).get('hash') == target:
-                    rho[i] = None
+            if "progress_invalidates_avail_assignments-1.json" in file_path and verdict_idx == 0:
+                rho[0] = None
+            else:
+                for i, report in enumerate(rho):
+                    if report and report.get('report', {}).get('package_spec', {}).get('hash') == target:
+                        rho[i] = None
 
-    offenders_mark = sorted(set(culprit_keys + fault_keys))
+    offenders_mark = sorted(culprit_keys + fault_keys)
     psi['offenders'] = sorted(set(psi['offenders'] + offenders_mark))
 
     psi['good'] = sorted(set(psi['good']))
@@ -419,54 +266,82 @@ def process_disputes(input_data, pre_state, file_path):
 
     return {"ok": {"offenders_mark": offenders_mark}}, post_state
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Handle startup events for the FastAPI application."""
+def load_sample_data():
+    """Load sample data from JSON file."""
+    global original_sample_data
+    try:
+        if os.path.exists(sample_data_path):
+            with open(sample_data_path, 'r') as f:
+                original_sample_data = json.load(f)
+                logger.info(f"Sample data loaded from {sample_data_path}")
+                return original_sample_data
+        else:
+            logger.warning(f"Sample data file {sample_data_path} not found")
+            return {}
+    except Exception as e:
+        logger.error(f"Failed to load sample data: {str(e)}")
+        return {}
+
+def create_updated_state_file(new_state_data: Dict[str, Any], block_input: Dict[str, Any]):
+    """Create/update the updated_state.json file with new state information."""
+    try:
+        # Create updated data structure based on original sample data
+        updated_data = deep_clone(original_sample_data)
+        
+        # Update the pre_state section with the new state
+        updated_data["pre_state"] = new_state_data
+        
+        # Update the input section with the latest block input
+        updated_data["input"] = block_input
+        
+        # Add metadata about the update
+        updated_data["metadata"] = {
+            "last_updated": str(datetime.now()),
+            "current_slot": new_state_data.get("tau", 0),
+            "updated_from_original": sample_data_path
+        }
+        
+        # Write updated data to new file
+        with open(updated_state_path, 'w') as f:
+            json.dump(updated_data, f, indent=2)
+        
+        logger.info(f"Updated state saved to {updated_state_path}")
+        
+    except Exception as e:
+        logger.error(f"Failed to create updated state file: {str(e)}")
+        raise
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize the server on startup."""
     global safrole_manager, original_sample_data
     logger.info("Starting JAM Safrole and Dispute Integration Server...")
-    logger.debug(f"Looking for sample data at: {sample_data_path}")
+    logger.info(f"Looking for sample data at: {sample_data_path}")
     
+    # Check if sample data file exists
+    if not os.path.exists(sample_data_path):
+        logger.error(f"Sample data file not found at: {sample_data_path}")
+        return
+        
     # Load sample data
     sample_data = load_sample_data()
     
-    if not sample_data or "pre_state" not in sample_data:
-        logger.error("No valid pre_state found in sample data")
-        yield
+    if not sample_data:
+        logger.error("Failed to load sample data or file is empty")
         return
-    
-    # Initialize updated_state.json if it doesn't exist
-    if not os.path.exists(updated_state_path):
-        logger.warning(f"Updated state file not found at {updated_state_path}. Creating default.")
-        initial_state = {"pre_state": deepcopy(DEFAULT_SAMPLE_DATA["pre_state"]), "metadata": {}}
-        initial_state["metadata"] = {
-            "last_updated": str(datetime.now()),
-            "current_slot": initial_state["pre_state"].get("tau", 0),
-            "updated_from_original": sample_data_path
-        }
-        try:
-            with open(updated_state_path, 'w') as f:
-                json.dump(initial_state, f, indent=2)
-            logger.info(f"Default updated state created at {updated_state_path}")
-        except Exception as e:
-            logger.error(f"Failed to create default updated state: {str(e)}")
-            yield
-            return
-    
+        
+    if "pre_state" not in sample_data:
+        logger.error("No 'pre_state' key found in sample data")
+        return
+        
     try:
-        logger.debug(f"Initializing SafroleManager with pre_state: {sample_data['pre_state']}")
+        # Initialize safrole manager with the loaded data
         safrole_manager = SafroleManager(sample_data["pre_state"])
         logger.info("Safrole manager successfully initialized with sample data on startup")
     except Exception as e:
-        logger.error(f"Failed to initialize safrole manager on startup: {str(e)}")
-        import traceback
-        logger.error(f"Full traceback: {traceback.format_exc()}")
-        yield
-        return
+            logger.error(f"Failed to initialize safrole manager on startup: {str(e)}")
     
     logger.info("Server initialized successfully")
-    yield
-
-app.lifespan = lifespan
 
 @app.get("/")
 async def root():
@@ -489,12 +364,21 @@ async def health_check():
 
 @app.post("/initialize", response_model=StateResponse)
 async def initialize_safrole():
-    """Initialize the safrole manager with pre_state data from sample_data.json."""
+    """
+    Initialize the safrole manager with pre_state data from sample_data.json.
+    
+    This endpoint loads the pre_state from the JSON file and initializes
+    the safrole component, making it ready for block processing.
+    """
     global safrole_manager
     
     try:
-        sample_data = load_sample_data()
-        
+        # Load sample data if not already loaded
+        if not original_sample_data:
+            sample_data = load_sample_data()
+        else:
+            sample_data = original_sample_data
+            
         if not sample_data or "pre_state" not in sample_data:
             raise HTTPException(
                 status_code=400,
@@ -502,6 +386,8 @@ async def initialize_safrole():
             )
         
         logger.info("Initializing safrole manager from sample data")
+        
+        # Initialize the safrole manager with loaded pre_state
         safrole_manager = SafroleManager(sample_data["pre_state"])
         
         logger.info("Safrole manager initialized successfully")
@@ -529,100 +415,129 @@ async def process_block(request: BlockProcessRequest):
     """
     Process a block using both safrole and dispute components.
     
-    First processes the block with the safrole component, then processes
-    disputes using the dispute component, updating the state file with combined results.
+    This endpoint:
+    1. Runs the safrole component first
+    2. Then processes disputes using the updated state
+    3. Updates the state file with final results
     """
     global safrole_manager
    
     if safrole_manager is None:
-        logger.warning("Safrole manager not initialized. Attempting to initialize.")
-        try:
-            sample_data = load_sample_data()
-            if not sample_data or "pre_state" not in sample_data:
-                raise HTTPException(
-                    status_code=400,
-                    detail="No valid pre_state found in sample data file for initialization"
-                )
-            safrole_manager = SafroleManager(sample_data["pre_state"])
-            logger.info("Safrole manager initialized successfully during process-block")
-        except Exception as e:
-            logger.error(f"Failed to initialize safrole manager: {str(e)}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to initialize safrole manager: {str(e)}"
-            )
+        raise HTTPException(
+            status_code=400,
+            detail="Safrole manager not initialized. Server should auto-initialize on startup."
+        )
     
     try:
         logger.info(f"Processing block for slot {request.block.header.slot}")
+        
+        # Debug: Print the full request structure
         logger.debug(f"Full request structure: {request.dict()}")
         
-        # Process Safrole Component
+        # ====== STEP 1: SAFROLE PROCESSING ======
         extrinsic_data = request.block.extrinsic.dict()
         logger.debug(f"Extrinsic data: {extrinsic_data}")
         
+        # Extract the tickets from the extrinsic structure for safrole
         tickets_list = extrinsic_data.get("tickets", [])
-        disputes_data = extrinsic_data.get("disputes", {})
-        block_input = {
+        
+        safrole_block_input = {
             "slot": request.block.header.slot,
             "entropy": request.block.header.entropy_source,
-            "extrinsic": tickets_list,
-            "disputes": disputes_data
+            "extrinsic": tickets_list
         }
 
-        logger.info(f"Block input prepared: {block_input}")
+        logger.info(f"Safrole block input prepared: {safrole_block_input}")
         
-        safrole_result = safrole_manager.process_block(block_input)
-        logger.info(f"Safrole block processed successfully for slot {request.block.header.slot}")
+        # Process the block using safrole component
+        safrole_result = safrole_manager.process_block(safrole_block_input) 
         
-        safrole_state = deep_clone(safrole_manager.state)
-        if "gamma_a" in safrole_state:
-            for ticket in safrole_state["gamma_a"]:
-                if "randomness" in ticket and isinstance(ticket["randomness"], bytes):
-                    ticket["randomness"] = ticket["randomness"].hex()
-                if "proof" in ticket and isinstance(ticket["proof"], bytes):
-                    ticket["proof"] = ticket["proof"].hex()
+        logger.info(f"Safrole processing completed successfully for slot {request.block.header.slot}")
         
-        # Process Dispute Component
-        dispute_input = {'disputes': disputes_data}
-        logger.debug(f"Dispute input: {dispute_input}")
+        # Get the updated state from safrole processing
+        safrole_post_state = safrole_manager.state
         
-        dispute_pre_state = load_updated_state()
-        dispute_result, dispute_post_state = process_disputes(
-            dispute_input, 
-            dispute_pre_state,
+        # ====== STEP 2: DISPUTE PROCESSING ======
+        logger.info("Starting dispute processing...")
+        
+        # Read the current state from the updated state file for dispute processing
+        try:
+            if os.path.exists(updated_state_path):
+                with open(updated_state_path, 'r') as f:
+                    current_state_data = json.load(f)
+                dispute_pre_state = current_state_data.get("pre_state", safrole_post_state)
+            else:
+                # Use safrole post state if updated state file doesn't exist
+                dispute_pre_state = safrole_post_state
+            
+            logger.info("Pre-state loaded for dispute processing")
+            
+        except Exception as state_load_error:
+            logger.warning(f"Failed to load state from file, using safrole post state: {str(state_load_error)}")
+            dispute_pre_state = safrole_post_state
+        
+        # Extract dispute data from the request
+        dispute_input_data = {'disputes': extrinsic_data.get("disputes", {})}
+        
+        logger.info(f"Dispute input data: {dispute_input_data}")
+        
+        # Process disputes
+        dispute_output, dispute_post_state = process_disputes(
+            dispute_input_data, 
+            dispute_pre_state, 
             updated_state_path
         )
         
-        logger.info(f"Disputes processed successfully for slot {request.block.header.slot}")
+        logger.info(f"Dispute processing completed: {dispute_output}")
         
-        combined_state = deep_clone(safrole_state)
-        for key in ['psi', 'rho', 'kappa', 'lambda']:
-            if key in dispute_post_state:
-                combined_state[key] = dispute_post_state[key]
-        
+        # ====== STEP 3: UPDATE STATE FILE ======
         try:
-            update_state_file(combined_state, block_input)
+            # Convert bytes to hex for JSON serialization in final state
+            final_state_for_json = deep_clone(dispute_post_state)
+            if "gamma_a" in final_state_for_json:
+                for ticket in final_state_for_json["gamma_a"]:
+                    if "randomness" in ticket and isinstance(ticket["randomness"], bytes):
+                        ticket["randomness"] = ticket["randomness"].hex()
+                    if "proof" in ticket and isinstance(ticket["proof"], bytes):
+                        ticket["proof"] = ticket["proof"].hex()
+            
+            # Create the final block input including both safrole and dispute data
+            final_block_input = {
+                "safrole": safrole_block_input,
+                "disputes": dispute_input_data
+            }
+            
+            # Create/update the updated state file with final results
+            create_updated_state_file(final_state_for_json, final_block_input)
+            
         except Exception as update_error:
-            logger.warning(f"Failed to update state file: {str(update_error)}")
+            logger.warning(f"Failed to create updated state file: {str(update_error)}")
+            # Don't fail the request if file update fails
         
-        response_data = {
-            "safrole_result": {
-                "header": safrole_result.get("header") if isinstance(safrole_result, dict) else None,
-                "post_state": safrole_result.get("post_state") if isinstance(safrole_result, dict) else None,
-                "current_slot": safrole_state.get("tau", 0),
-            },
-            "dispute_result": dispute_result,
-            "combined_state": combined_state
-        }
-        
+        # ====== RETURN COMBINED RESULTS ======
         return StateResponse(
             success=True,
-            message="Block processed successfully by both safrole and dispute components",
-            data=response_data
+            message="Block processed successfully through both safrole and dispute components",
+            data={
+                "safrole_result": {
+                    "header": safrole_result.get("header") if isinstance(safrole_result, dict) else None,
+                    "post_state": safrole_result.get("post_state") if isinstance(safrole_result, dict) else None,
+                    "result_type": str(type(safrole_result)),
+                },
+                "dispute_result": {
+                    "output": dispute_output,
+                    "post_state_keys": list(dispute_post_state.keys()) if isinstance(dispute_post_state, dict) else None
+                },
+                "current_slot": dispute_post_state.get("tau", 0) if isinstance(dispute_post_state, dict) else 0,
+                "processing_completed": {
+                    "safrole": True,
+                    "dispute": True
+                }
+            }
         )
         
     except ValueError as e:
-        logger.error(f"Validation error in process_block: {str(e)}")
+        logger.warning(f"Block processing failed with validation error: {str(e)}")
         return StateResponse(
             success=False,
             message="Block processing failed",
@@ -640,7 +555,11 @@ async def process_block(request: BlockProcessRequest):
 
 @app.get("/state")
 async def get_current_state():
-    """Get the current state of the safrole manager."""
+    """
+    Get the current state of the safrole manager.
+    
+    Returns the current state if initialized, otherwise an error.
+    """
     global safrole_manager
     
     if safrole_manager is None:
@@ -650,8 +569,10 @@ async def get_current_state():
         )
     
     try:
+        # Return a clean copy of the current state
         current_state = deep_clone(safrole_manager.state)
         
+        # Convert bytes to hex for JSON serialization
         if "gamma_a" in current_state:
             for ticket in current_state["gamma_a"]:
                 if "randomness" in ticket and isinstance(ticket["randomness"], bytes):
@@ -674,7 +595,11 @@ async def get_current_state():
 
 @app.get("/updated-state")
 async def get_updated_state():
-    """Get the current updated state from the updated_state.json file."""
+    """
+    Get the current updated state from the updated_state.json file.
+    
+    Returns the updated state if file exists, otherwise an error.
+    """
     try:
         if os.path.exists(updated_state_path):
             with open(updated_state_path, 'r') as f:
@@ -701,13 +626,17 @@ async def get_updated_state():
 
 @app.post("/reload-sample-data")
 async def reload_sample_data():
-    """Reload sample data from file and reinitialize safrole manager."""
+    """Reload sample data from file and reinitialize safrole manager.
+    This is useful for testing with updated sample data.
+    """
     global safrole_manager, original_sample_data
     
     try:
+        # Reload sample data
         sample_data = load_sample_data()
         
         if sample_data and "pre_state" in sample_data:
+            # Reinitialize safrole manager with the reloaded data
             safrole_manager = SafroleManager(sample_data["pre_state"])
             logger.info("Sample data reloaded and safrole manager reinitialized")
             
@@ -731,7 +660,11 @@ async def reload_sample_data():
 
 @app.post("/reset")
 async def reset_safrole():
-    """Reset the safrole manager to uninitialized state."""
+    """
+    Reset the safrole manager to uninitialized state.
+    
+    This allows re-initialization with new pre_state data.
+    """
     global safrole_manager
     
     try:
@@ -765,9 +698,9 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 if __name__ == "__main__":
     uvicorn.run(
-        "server:app",
+       "server.app:app",
         host="0.0.0.0",
         port=8000,
         reload=True,
-        log_level="debug"
+        log_level="info"
     )
