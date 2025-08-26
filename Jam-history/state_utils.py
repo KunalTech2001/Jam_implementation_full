@@ -67,8 +67,11 @@ def load_updated_state(file_path: str) -> dict:
                 mmr_peaks = []
                 if block.get('header_hash') and block.get('state_root'):
                     # Create a hash from header_hash and state_root for the MMR peak
-                    mmr_input = f"{block['header_hash']}{block['state_root']}".encode()
-                    mmr_peaks.append(keccak256(mmr_input).hex())
+                    # Remove '0x' prefix if present and convert to bytes
+                    header_hash = block['header_hash'][2:] if block['header_hash'].startswith('0x') else block['header_hash']
+                    state_root = block['state_root'][2:] if block['state_root'].startswith('0x') else block['state_root']
+                    mmr_input = bytes.fromhex(header_hash + state_root)
+                    mmr_peaks.append(keccak256(mmr_input))
                 
                 beta_block = {
                     'header_hash': block.get('header_hash', '0x' + '00' * 32),
@@ -104,62 +107,19 @@ def save_updated_state(file_path: str, state_data: dict) -> bool:
     
     Args:
         file_path: Path to save the updated_state.json file
-        state_data: Dictionary containing 'input' and 'pre_state' data
+        state_data: Dictionary containing the complete state to save
         
     Returns:
         True if successful, False otherwise
     """
     try:
-        # Load existing data to preserve other fields
-        existing_data = {}
-        try:
-            with open(file_path, 'r') as f:
-                existing_data = json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError):
-            existing_data = {}
+        # Create parent directory if it doesn't exist
+        file_path = Path(file_path)
+        file_path.parent.mkdir(parents=True, exist_ok=True)
         
-        # Update the pre_state with the new beta blocks
-        if 'pre_state' not in existing_data:
-            existing_data['pre_state'] = {}
-            
-        # Update the beta blocks in pre_state
-        if 'beta' in state_data:
-            existing_data['pre_state']['beta'] = state_data['beta']
-        
-        # Preserve the input data if it exists in the existing data
-        if 'input' in existing_data:
-            # Update the input data with any new values from state_data
-            if 'input' in state_data:
-                existing_data['input'].update(state_data['input'])
-        elif 'input' in state_data:
-            existing_data['input'] = state_data['input']
-        
-        # Update recent_blocks with the new beta blocks
-        if 'beta' in existing_data.get('pre_state', {}):
-            beta_blocks = existing_data['pre_state']['beta']
-            
-            # Initialize recent_blocks if it doesn't exist
-            if 'recent_blocks' not in existing_data:
-                existing_data['recent_blocks'] = {'history': []}
-            
-            # Convert beta blocks to recent_blocks format
-            recent_blocks = []
-            for block in beta_blocks:
-                recent_block = {
-                    'header_hash': block.get('header_hash', '0x' + '00' * 32),
-                    'state_root': block.get('state_root', '0x' + '00' * 32),
-                    'beefy_root': '0x' + '00' * 32,  # Default beefy_root if not available
-                    'reported': block.get('reported', [])
-                }
-                recent_blocks.append(recent_block)
-            
-            # Keep only the most recent 8 blocks (if needed)
-            existing_data['recent_blocks']['history'] = recent_blocks[-8:]
-        
-        # Save back to file
+        # Save the complete new state, replacing any existing file
         with open(file_path, 'w') as f:
-            json.dump(existing_data, f, indent=2)
-            
+            json.dump(state_data, f, indent=2)
         return True
         
     except Exception as e:
