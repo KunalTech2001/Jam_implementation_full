@@ -515,7 +515,7 @@ original_sample_data: Dict[str, Any] = {}
 
 
 
-# ✅ Path to jam_history (test.py)
+# Path to jam_history (test.py)
 def run_jam_history():
     """Run the jam_history component (test.py)."""
     try:
