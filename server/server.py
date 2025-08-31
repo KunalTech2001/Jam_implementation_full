@@ -1,3 +1,7 @@
+
+
+
+
 # from fastapi import FastAPI, HTTPException, Request
 # from fastapi.middleware.cors import CORSMiddleware
 # from fastapi.responses import JSONResponse
@@ -457,8 +461,6 @@
 
 
 
-
-
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -707,44 +709,89 @@ def run_jam_history():
         logger.error(error_msg)
         return False, error_msg
 
-def update_state_file(post_state: Dict[str, Any], block_input: Dict[str, Any]):
-    """Update updated_state.json with new post_state, preserving non-relevant fields."""
-    try:
-        # Load existing state to preserve other fields
-        if os.path.exists(updated_state_path):
-            with open(updated_state_path, 'r') as f:
-                existing_data = json.load(f)
+def deep_merge(dict1, dict2):
+    """Recursively merge two dictionaries, combining nested dictionaries and lists."""
+    if not isinstance(dict1, dict) or not isinstance(dict2, dict):
+        return dict2 if dict2 is not None else dict1
+    
+    result = dict1.copy()
+    for key, value in dict2.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = deep_merge(result[key], value)
+        elif key in result and isinstance(result[key], list) and isinstance(value, list):
+            # For lists, we'll extend them to preserve all elements
+            # This might need adjustment based on your specific requirements
+            result[key].extend(x for x in value if x not in result[key])
         else:
-            existing_data = {"pre_state": {}, "metadata": {}}
+            result[key] = deep_clone(value) if isinstance(value, (dict, list)) else value
+    return result
+
+def create_updated_state_file(new_state_data: Dict[str, Any], block_input: Dict[str, Any]):
+    """Update the updated_state.json file with new state information while preserving existing data."""
+    temp_path = f"{updated_state_path}.tmp"
+    
+    try:
+        # Start with a deep copy of the original sample data as our base
+        updated_data = deep_clone(original_sample_data)
         
-        # Update only relevant fields in pre_state
-        existing_data["pre_state"].update({
-            "psi": post_state["psi"],
-            "rho": post_state["rho"],
-            "tau": post_state["tau"],
-            "kappa": post_state["kappa"],
-            "lambda": post_state["lambda"],
-            "vals_curr_stats": post_state["vals_curr_stats"],
-            "vals_last_stats": post_state["vals_last_stats"],
-            "slot": post_state["slot"],
-            "curr_validators": post_state["curr_validators"]
+        # If updated_state.json exists, deep merge its contents with our base
+        if os.path.exists(updated_state_path):
+            try:
+                with open(updated_state_path, 'r') as f:
+                    existing_data = json.load(f)
+                # Deep merge existing data into our base
+                updated_data = deep_merge(updated_data, existing_data)
+                logger.info("Merged existing state with original sample data")
+            except json.JSONDecodeError as e:
+                logger.error(f"Error reading existing state file: {e}")
+                # If we can't read the existing file, continue with just the sample data
+        
+        # Update the pre_state by merging with new_state_data
+        if "pre_state" in updated_data and isinstance(updated_data["pre_state"], dict):
+            updated_data["pre_state"] = deep_merge(updated_data["pre_state"], new_state_data)
+        else:
+            updated_data["pre_state"] = deep_clone(new_state_data)
+        
+        # Update the input with the new block input
+        updated_data["input"] = deep_clone(block_input)
+        
+        # Ensure metadata exists and update it
+        if "metadata" not in updated_data:
+            updated_data["metadata"] = {}
+        
+        # Update metadata fields while preserving any existing ones
+        updated_data["metadata"].update({
+            "last_updated": str(datetime.now()),
+            "current_slot": new_state_data.get("slot", new_state_data.get("tau", updated_data["metadata"].get("current_slot", 0))),
+            "updated_from_original": sample_data_path
         })
         
-        # Update metadata and input
-        existing_data["input"] = block_input
-        existing_data["metadata"] = {
-            "last_updated": str(datetime.now()),
-            "current_slot": post_state.get("slot", post_state.get("tau", 0)),
-            "updated_from_original": sample_data_path
-        }
+        # Create directory if it doesn't exist
+        os.makedirs(os.path.dirname(updated_state_path), exist_ok=True)
         
-        with open(updated_state_path, 'w') as f:
-            json.dump(existing_data, f, indent=2)
+        # Write to a temporary file first
+        with open(temp_path, 'w') as f:
+            json.dump(updated_data, f, indent=2, sort_keys=True)
         
-        logger.info(f"Updated state saved to {updated_state_path}")
+        # Atomically replace the old file with the new one
+        os.replace(temp_path, updated_state_path)
+        
+        logger.info(f"Successfully updated state file at {updated_state_path}")
+        logger.debug(f"Updated state content: {json.dumps(updated_data, indent=2, default=str)}")
+        return True
+        
     except Exception as e:
-        logger.error(f"Failed to update state file: {str(e)}")
-        raise
+        logger.error(f"Failed to update state file: {str(e)}", exc_info=True)
+        # Clean up temporary file if it exists
+        if 'temp_path' in locals() and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except Exception as cleanup_error:
+                logger.error(f"Failed to clean up temporary file: {str(cleanup_error)}")
+        return False
+
+# Alias for backward compatibility
+update_state_file = create_updated_state_file
 
 def json_diff(a, b):
     """Return a string diff of two JSON-serializable objects."""
