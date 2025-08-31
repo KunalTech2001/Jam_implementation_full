@@ -13,16 +13,20 @@ import traceback
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple
 
-# Configure logging
+# Configure logging to be more concise
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.ERROR,  # Only show errors by default
+    format='%(message)s',
     handlers=[
         logging.StreamHandler(),
         logging.FileHandler('preimage_processor.log')
     ]
 )
 logger = logging.getLogger(__name__)
+
+# Suppress verbose logs from other modules
+logging.getLogger('src').setLevel(logging.ERROR)
+logging.getLogger('urllib3').setLevel(logging.ERROR)
 
 # Add src directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
@@ -294,7 +298,8 @@ def ensure_account_exists(test_vector: PreimagesTestVector, account_id: int) -> 
         )
     )
     test_vector.pre_state.accounts.append(new_account)
-    logger.debug(f"Created new account with ID {account_id}")
+    logger.info(f"Created new account with ID {account_id}")
+
 
 def add_sample_preimages(test_vector: PreimagesTestVector) -> None:
     """
@@ -343,149 +348,212 @@ def add_sample_preimages(test_vector: PreimagesTestVector) -> None:
             test_vector.input.slot = 1
             
         logger.info(f"Added {len(sample_preimages)} sample preimages for slot {test_vector.input.slot}")
+
+
+def run_preimage_test(test_vector: PreimagesTestVector) -> Tuple[bool, Optional[dict]]:
+    """
+    Run the preimage STF test with the given test vector.
+    
+    Args:
+        test_vector: The test vector containing input, pre_state, and expected output.
         
-        # Log the order of preimages and accounts for debugging
-        logger.info(f"Current accounts in pre_state: {[acc.id for acc in test_vector.pre_state.accounts]}")
-        for i, preimage in enumerate(test_vector.input.preimages):
-            logger.debug(f"Preimage {i}: requester={preimage.requester}, blob_hash={hash_blob(preimage.blob) if hasattr(preimage, 'blob') else 'N/A'}")
+    Returns:
+        A tuple containing:
+        - bool: True if the test passed, False otherwise
+        - dict: The generated post_state if the test passed, None otherwise
+    """
+    # Suppress test output by setting a higher log level
+    logging.getLogger().setLevel(logging.ERROR)
+    
+    # Run the test and return the result
+    from src.stf.run_test import run_preimage_test as run_test_func
+    result = run_test_func(test_vector)
+    # Extract the test_passed and generated_post_state from the result
+    test_passed = result.get('verified', False)
+    generated_post_state = result.get('generated_post_state', {})
+    return test_passed, generated_post_state
+
 
 def main() -> None:
     """
     Main function to process updated_state.json.
     
     This function:
-    1. Loads the state from updated_state.json
-    2. Creates a test vector from the state
-    3. Adds sample preimages if needed
+    1. Checks if the state file exists
+    2. Loads the state from updated_state.json if it exists
+    3. Creates a test vector from the state
     4. Runs the preimage STF test
-    5. Saves the updated state back to updated_state.json
+    5. Updates the post_state in the state file
     """
     try:
-        # Path to updated_state.json (relative to the project root)
-        project_root = Path(__file__).resolve().parent
-        updated_state_path = project_root.parent / "server" / "updated_state.json"
+        # Path to the updated_state.json file
+        updated_state_path = '/Users/anish/Desktop/fulljam/Jam_implementation_full/server/updated_state.json'
         
-        logger.info(f"Starting preimage processing for {updated_state_path}")
+        # Check if the file exists
+        if not os.path.exists(updated_state_path):
+            print(f"Error: {updated_state_path} does not exist")
+            sys.exit(1)
         
-        # Ensure the updated_state.json exists or create a default one
-        if not updated_state_path.exists():
-            logger.warning(f"{updated_state_path} does not exist, creating a default state")
-            updated_state_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(updated_state_path, 'w') as f:
-                json.dump({
-                    "current_slot": 1,
-                    "beta": [],
-                    "accounts": [],
-                    "statistics": []
-                }, f, indent=2)
+        # Print minimal output
+        print("Jam-preimage is running...")
         
-        # Load state from updated_state.json
-        logger.info(f"Loading state from {updated_state_path}")
-        state_data = load_state_from_updated_state(str(updated_state_path))
+        # Load the state from the file
+        state_data = load_state_from_updated_state(updated_state_path)
+        
         if not state_data:
-            logger.error("Failed to load state data")
-            return
-        
-        # Create test vector from state data
-        logger.info("Creating test vector from state data")
-        test_vector = create_test_vector_from_state(state_data)
-        if not test_vector:
-            logger.error("Failed to create test vector from state data")
-            return
-        
-        # Add sample preimages if needed (for testing)
-        add_sample_preimages(test_vector)
-        
-        # Run the preimage test
-        logger.info("Running preimage STF test...")
-        
-        # Log test vector details before running the test
-        logger.debug(f"Test vector name: {getattr(test_vector, 'name', 'unnamed')}")
-        logger.debug(f"Input preimages: {len(test_vector.input.preimages) if hasattr(test_vector, 'input') and hasattr(test_vector.input, 'preimages') else 'N/A'}")
-        logger.debug(f"Pre-state accounts: {len(test_vector.pre_state.accounts) if hasattr(test_vector, 'pre_state') and hasattr(test_vector.pre_state, 'accounts') else 'N/A'}")
-        
-        try:
-            result = run_preimage_test(test_vector)
+            print("Error: Failed to load state data")
+            sys.exit(1)
             
-            if not result:
-                logger.error("Test returned None")
-                return
-                
-            if not hasattr(result, 'post_state'):
-                logger.error("Test result has no post_state attribute")
-                logger.debug(f"Result attributes: {dir(result)}")
-                
-                # If there's an error message, log it
-                if hasattr(result, 'error'):
-                    logger.error(f"Test error: {result.error}")
-                    
-                return
-                
-        except Exception as e:
-            logger.error(f"Exception during test execution: {e}")
-            logger.error(traceback.format_exc())
-            return
+        # Create a test vector from the state
+        test_vector = create_test_vector_from_state(state_data)
+        
+        if not test_vector:
+            print("Error: Failed to create test vector from state data")
+            sys.exit(1)
+            
+        # Run the preimage test
+        test_passed, result = run_preimage_test(test_vector)
+        
+        if not test_passed:
+            print("Error: Preimage test failed")
+            sys.exit(1)
+            
+        # Process the post_state
+        post_state = process_post_state(result)
+        
+        # Update the state file with the new post_state
+        save_state_to_updated_state(updated_state_path, post_state)
+        
+        # Print the generated post_state and save location
+        print("\nGenerated post_state:")
+        
+        # Read the saved file to get the complete post_state
+        with open(updated_state_path, 'r') as f:
+            saved_data = json.load(f)
+            
+        # Extract and print just the post_state section
+        if 'post_state' in saved_data:
+            print(json.dumps(saved_data['post_state'], indent=2))
+        else:
+            print("Warning: No post_state found in saved file")
+            print("Full saved data:")
+            print(json.dumps(saved_data, indent=2))
+            
+        print(f"\nOutput saved to: {updated_state_path}")
+        
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        sys.exit(1)
+            
+        # Import dataclasses for serialization
+        from dataclasses import asdict
+        
+        # Create the final result structure
+        final_result = {
+            'input': asdict(test_vector.input) if hasattr(test_vector, 'input') else {},
+            'pre_state': asdict(test_vector.pre_state) if hasattr(test_vector, 'pre_state') else {},
+            'output': result.get('output', {}),
+            'post_state': result.get('post_state', {})
+        }
+        
+        # Save the full test results to a file for reference
+        results_dir = project_root / "test_results"
+        results_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Find the next available results file
+        results_index = 1
+        while True:
+            results_path = results_dir / f"preimage_test_results_{results_index:03d}.json"
+            if not results_path.exists():
+                break
+            results_index += 1
+        
+        # Save the final result to the results file
+        with open(results_path, 'w') as f:
+            json.dump(final_result, f, indent=4)
         
         # Save the updated state back to updated_state.json
         logger.info("Saving updated state...")
         if save_state_to_updated_state(str(updated_state_path), result):
             logger.info(f"Successfully updated {updated_state_path}")
             
-            # Save the full test results to a file for reference
-            results_dir = project_root / "test_results"
-            results_dir.mkdir(parents=True, exist_ok=True)
-            
-            # Find the next available results file
-            results_index = 1
-            while True:
-                results_path = results_dir / f"preimage_test_results_{results_index:03d}.json"
-                if not results_path.exists():
-                    break
-                results_index += 1
-            
-            # Save detailed results
-            with open(results_path, 'w') as f:
-                import json
-                from dataclasses import asdict
-                
-                results = {
-                    "input": asdict(result.input) if hasattr(result, 'input') else {},
-                    "pre_state": asdict(result.pre_state) if hasattr(result, 'pre_state') else {},
-                    "post_state": asdict(result.post_state) if hasattr(result, 'post_state') else {},
-                    "output": asdict(result.output) if hasattr(result, 'output') else {}
-                }
-                
-                # Ensure JSON serialization
-                def default_serializer(obj):
-                    if hasattr(obj, '__dict__'):
-                        return obj.__dict__
-                    elif hasattr(obj, 'hex'):
-                        return obj.hex()
-                    raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
-                
-                json.dump(results, f, indent=2, default=default_serializer)
-                
-            logger.info(f"Test results saved to {results_path}")
-            
-            # Print a summary
-            input_count = len(result.input.preimages) if hasattr(result, 'input') and hasattr(result.input, 'preimages') else 0
-            pre_state_accounts = len(result.pre_state.accounts) if hasattr(result, 'pre_state') and hasattr(result.pre_state, 'accounts') else 0
-            post_state_accounts = len(result.post_state.accounts) if hasattr(result, 'post_state') and hasattr(result.post_state, 'accounts') else 0
-            
-            print("\n=== Preimage Processing Summary ===")
-            print(f"Input preimages: {input_count}")
-            print(f"Pre-state accounts: {pre_state_accounts}")
-            print(f"Post-state accounts: {post_state_accounts}")
-            print(f"Results saved to: {results_path}")
-            print("================================\n")
-            
-        else:
-            logger.error("Failed to save updated state")
-            
     except Exception as e:
-        logger.error(f"Error in main: {e}")
+        logger.error(f"Exception during test execution: {e}")
         logger.error(traceback.format_exc())
-        sys.exit(1)
+        return
+
+# Helper function to convert objects to serializable format
+def convert_to_serializable(obj):
+    if hasattr(obj, '__dict__'):
+        return {k: convert_to_serializable(v) for k, v in obj.__dict__.items() 
+               if not k.startswith('_') and v is not None}
+    elif isinstance(obj, list):
+        return [convert_to_serializable(item) for item in obj]
+    elif hasattr(obj, 'hex'):
+        return obj.hex()
+    return obj
+
+# Helper function to ensure account data has the right structure
+def ensure_account_structure(account_data):
+    if not isinstance(account_data, dict):
+        return account_data
+
+    # Ensure 'data' exists and has the right structure
+    if 'data' not in account_data:
+        account_data['data'] = {}
+    if not isinstance(account_data['data'], dict):
+        account_data['data'] = {}
+    
+    # Ensure 'lookup_meta' exists and is a list
+    if 'lookup_meta' not in account_data['data']:
+        account_data['data']['lookup_meta'] = []
+    elif not isinstance(account_data['data']['lookup_meta'], list):
+        account_data['data']['lookup_meta'] = []
+    
+    # Ensure 'preimages' exists and is a list
+    if 'preimages' not in account_data['data']:
+        account_data['data']['preimages'] = []
+    elif not isinstance(account_data['data']['preimages'], list):
+        account_data['data']['preimages'] = []
+    
+    return account_data
+
+def process_post_state(result):
+    """Process the post_state from the test result."""
+    post_state = {}
+    if hasattr(result, 'post_state') and hasattr(result.post_state, 'accounts'):
+        post_state['accounts'] = []
+        for account in result.post_state.accounts:
+            account_data = {
+                "id": account.id,
+                "data": {
+                    "preimages": [],
+                    "lookup_meta": []
+                }
+            }
+            
+            # Add preimages
+            if hasattr(account, 'data') and hasattr(account.data, 'preimages'):
+                for preimage in account.data.preimages:
+                    account_data["data"]["preimages"].append({
+                        "hash": preimage.hash,
+                        "blob": preimage.blob
+                    })
+            
+            # Add lookup_meta
+            if hasattr(account, 'data') and hasattr(account.data, 'lookup_meta'):
+                for meta in account.data.lookup_meta:
+                    account_data["data"]["lookup_meta"].append({
+                        "key": {
+                            "hash": meta.key.hash,
+                            "length": meta.key.length
+                        },
+                        "value": meta.value
+                    })
+            
+            post_state['accounts'].append(account_data)
+    
+    return post_state
 
 if __name__ == "__main__":
     main()

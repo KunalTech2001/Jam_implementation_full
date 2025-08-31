@@ -197,6 +197,9 @@ def save_state_to_updated_state(file_path: str, test_vector: PreimagesTestVector
     Returns:
         True if successful, False otherwise
     """
+    # Define backup path at the beginning of the function
+    backup_path = f"{file_path}.bak"
+    
     try:
         # Resolve the absolute path and create directory if it doesn't exist
         file_path = os.path.abspath(file_path)
@@ -307,6 +310,10 @@ def save_state_to_updated_state(file_path: str, test_vector: PreimagesTestVector
                     }
                     new_beta_block["reported"].append(reported_entry)
         
+        # Ensure beta is a list before appending to it
+        if "beta" not in state_data or not isinstance(state_data["beta"], list):
+            state_data["beta"] = []
+            
         # Add the new beta block to the state
         state_data["beta"].append(new_beta_block)
 
