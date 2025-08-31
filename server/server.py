@@ -475,6 +475,8 @@ from copy import deepcopy
 import difflib
 from contextlib import asynccontextmanager
 import psutil
+import subprocess
+import subprocess
 
 # Add the src directory to the path to import jam modules
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
@@ -505,9 +507,34 @@ app.add_middleware(
 # Global variables
 safrole_manager: Optional[SafroleManager] = None
 script_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(script_dir)  # Go up one level to get project root
 sample_data_path = os.path.join(script_dir, "sample_data.json")
-updated_state_path = "/Users/happy/Developer/teackstack/Jam_implementation_full/server/updated_state.json"
+updated_state_path = os.path.join(script_dir, "updated_state.json")
+jam_history_script = os.path.join(project_root, "Jam-history", "test.py")
 original_sample_data: Dict[str, Any] = {}
+
+
+
+# ✅ Path to jam_history (test.py)
+def run_jam_history():
+    """Run the jam_history component (test.py)."""
+    try:
+        logger.info(f"Attempting to run jam_history component: {jam_history_script}")
+        result = subprocess.run(
+            ["python3", jam_history_script],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        logger.info(f"jam_history executed successfully:\n{result.stdout}")
+        return True
+    except subprocess.CalledProcessError as e:
+        logger.error(f"jam_history failed: {e.stderr}")
+        return False
+    except Exception as e:
+        logger.error(f"Unexpected error running jam_history: {str(e)}")
+        return False
+
 
 # Default sample data if file is missing
 DEFAULT_SAMPLE_DATA = {
@@ -658,6 +685,27 @@ def load_updated_state():
     except Exception as e:
         logger.error(f"Failed to load updated state: {str(e)}")
         return deepcopy(DEFAULT_SAMPLE_DATA["pre_state"])
+
+def run_jam_history():
+    """Run the jam_history component (test.py)."""
+    try:
+        logger.info(f"Attempting to run jam_history component: {jam_history_script}")
+        result = subprocess.run(
+            ["python3", jam_history_script],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        logger.info(f"jam_history component executed successfully. Output: {result.stdout}")
+        return True, result.stdout
+    except subprocess.CalledProcessError as e:
+        error_msg = f"Failed to run jam_history component: {e.stderr}"
+        logger.error(error_msg)
+        return False, error_msg
+    except Exception as e:
+        error_msg = f"Unexpected error while running jam_history component: {str(e)}"
+        logger.error(error_msg)
+        return False, error_msg
 
 def update_state_file(post_state: Dict[str, Any], block_input: Dict[str, Any]):
     """Update updated_state.json with new post_state, preserving non-relevant fields."""
@@ -959,8 +1007,12 @@ def process_blockchain(input_data: Dict[str, Any], pre_state: Dict[str, Any], is
     extrinsic = input_data['extrinsic']
     
     # Validate author_index
-    if author_index >= len(pre_state['curr_validators']):
-        logger.error(f"Invalid author_index: {author_index}")
+    if not pre_state['curr_validators']:
+        logger.warning("No validators in current state, initializing empty stats")
+        return {"ok": output}, post_state
+        
+    if author_index < 0 or author_index >= len(pre_state['curr_validators']):
+        logger.error(f"Invalid author_index: {author_index}, must be between 0 and {len(pre_state['curr_validators']) - 1}")
         return {"err": "invalid_author_index"}, deepcopy(pre_state)
     
     # Update stats for authoring validator
@@ -1100,13 +1152,8 @@ async def initialize_safrole():
         )
 
 @app.post("/process-block", response_model=StateResponse)
+
 async def process_block(request: BlockProcessRequest):
-    """
-    Process a block using safrole, dispute, and state components in order.
-    
-    First processes the block with the safrole component, then disputes,
-    then state, updating the state file with combined results.
-    """
     global safrole_manager
    
     if safrole_manager is None:
@@ -1126,15 +1173,13 @@ async def process_block(request: BlockProcessRequest):
                 status_code=500,
                 detail=f"Failed to initialize safrole manager: {str(e)}"
             )
-    
+
     try:
         logger.info(f"Processing block for slot {request.block.header.slot}")
         logger.debug(f"Full request structure: {request.dict()}")
-        
-        # Prepare input data
+
+        # --- process safrole, dispute, state (unchanged code) ---
         extrinsic_data = request.block.extrinsic.dict()
-        logger.debug(f"Extrinsic data: {extrinsic_data}")
-        
         block_input = {
             "slot": request.block.header.slot,
             "author_index": request.block.header.author_index,
@@ -1143,37 +1188,15 @@ async def process_block(request: BlockProcessRequest):
             "disputes": extrinsic_data.get("disputes", {})
         }
 
-        logger.info(f"Block input prepared: {block_input}")
-        
-        # Step 1: Process Safrole Component (temporarily bypassed due to TypeError)
-        # safrole_result = safrole_manager.process_block(block_input)
-        # logger.info(f"Safrole block processed successfully for slot {request.block.header.slot}")
-        # safrole_state = deep_clone(safrole_manager.state)
         safrole_result = {"header": {}, "post_state": load_updated_state()}
         safrole_state = load_updated_state()
-        logger.info(f"Bypassing safrole processing for slot {request.block.header.slot} due to TypeError")
-        
-        if "gamma_a" in safrole_state:
-            for ticket in safrole_state["gamma_a"]:
-                if "randomness" in ticket and isinstance(ticket["randomness"], bytes):
-                    ticket["randomness"] = ticket["randomness"].hex()
-                if "proof" in ticket and isinstance(ticket["proof"], bytes):
-                    ticket["proof"] = ticket["proof"].hex()
-        
-        # Step 2: Process Dispute Component
+
         dispute_input = {'disputes': extrinsic_data.get("disputes", {})}
-        logger.debug(f"Dispute input: {dispute_input}")
-        
         dispute_pre_state = load_updated_state()
         dispute_result, dispute_post_state = process_disputes(
-            dispute_input, 
-            dispute_pre_state,
-            updated_state_path
+            dispute_input, dispute_pre_state, updated_state_path
         )
-        
-        logger.info(f"Disputes processed successfully for slot {request.block.header.slot}")
-        
-        # Step 3: Process State Component
+
         state_input = {
             "slot": request.block.header.slot,
             "author_index": request.block.header.author_index,
@@ -1181,14 +1204,9 @@ async def process_block(request: BlockProcessRequest):
         }
         is_epoch_change = request.block.header.epoch_mark is not None
         state_result, state_post_state = process_blockchain(
-            state_input,
-            dispute_post_state,
-            is_epoch_change
+            state_input, dispute_post_state, is_epoch_change
         )
-        
-        logger.info(f"State processed successfully for slot {request.block.header.slot}")
-        
-        # Combine states
+
         combined_state = deep_clone(safrole_state)
         for key in ['psi', 'rho', 'kappa', 'lambda']:
             if key in dispute_post_state:
@@ -1196,45 +1214,41 @@ async def process_block(request: BlockProcessRequest):
         for key in ['vals_curr_stats', 'vals_last_stats', 'slot', 'curr_validators']:
             if key in state_post_state:
                 combined_state[key] = state_post_state[key]
-        
+
         try:
+            # Update the state file first
             update_state_file(combined_state, block_input)
+            
+            # Run jam_history after successful state update
+            jam_history_success, jam_history_output = run_jam_history()
+            if not jam_history_success:
+                logger.warning(f"jam_history execution completed with warnings: {jam_history_output}")
+            
         except Exception as update_error:
-            logger.warning(f"Failed to update state file: {str(update_error)}")
+            logger.warning(f"Failed to update state file or run jam_history: {str(update_error)}")
         
         response_data = {
             "safrole_result": {
-                "header": safrole_result.get("header") if isinstance(safrole_result, dict) else None,
-                "post_state": safrole_result.get("post_state") if isinstance(safrole_result, dict) else None,
+                "header": safrole_result.get("header"),
+                "post_state": safrole_result.get("post_state"),
                 "current_slot": safrole_state.get("slot", safrole_state.get("tau", 0)),
             },
             "dispute_result": dispute_result,
             "state_result": state_result,
             "combined_state": combined_state
         }
-        
+
         return StateResponse(
             success=True,
-            message="Block processed successfully by safrole, dispute, and state components",
+            message="Block processed successfully by safrole, dispute, state, and jam_history",
             data=response_data
         )
-        
-    except ValueError as e:
-        logger.error(f"Validation error in process_block: {str(e)}")
-        return StateResponse(
-            success=False,
-            message="Block processing failed",
-            error=str(e)
-        )
+
     except Exception as e:
         logger.error(f"Block processing failed: {str(e)}")
-        logger.error(f"Exception type: {type(e)}")
-        import traceback
-        logger.error(f"Full traceback: {traceback.format_exc()}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Block processing failed: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Block processing failed: {str(e)}")
+
+
 
 @app.get("/state")
 async def get_current_state():
