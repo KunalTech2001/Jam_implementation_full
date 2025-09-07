@@ -5,8 +5,8 @@
     "accumulate_root": "0x29cd82f646e56df4570fe6cc70d62225becab7138788e1728ed2cdde59202145",
     "work_packages": [
       {
-        "exports_root": "0x3d16ed66bae11acbdccc7015b4ee5c1bf87c864a7c930f78f59368280551f60d",
-        "hash": "0x303026af983b91393c6b31e972263759f72c5e7656c00b267e9b61292252c125"
+        "hash": "0x303026af983b91393c6b31e972263759f72c5e7656c00b267e9b61292252c125",
+        "exports_root": "0x3d16ed66bae11acbdccc7015b4ee5c1bf87c864a7c930f78f59368280551f60d"
       }
     ]
   },
