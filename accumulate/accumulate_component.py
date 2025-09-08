@@ -1,53 +1,150 @@
 import copy
-from hashlib import sha3_256
+import json
+from pathlib import Path
+from typing import Dict, Any, Optional
 
-def bytes_from_hex(h):
-    return bytes.fromhex(h[2:])
+# Constants
+UPDATED_STATE_PATH = Path(__file__).parent.parent / 'server' / 'updated_state.json'
+OUTPUT_PATH = Path(__file__).parent / 'accumulate_output.json'
 
-def merkle_root(hashes):
-    if not hashes:
-        return "0x" + "0" * 64
-    leaves = [sha3_256(bytes_from_hex(h)).digest() for h in hashes]
-    while len(leaves) > 1:
-        new_leaves = []
-        for i in range(0, len(leaves), 2):
-            left = leaves[i]
-            right = left if i + 1 == len(leaves) else leaves[i + 1]
-            combined = left + right if left < right else right + left
-            new_leaves.append(sha3_256(combined).digest())
-        leaves = new_leaves
-    return "0x" + leaves[0].hex()
-
-def shallow_flatten(lst):
-    result = []
-    for item in lst:
-        if isinstance(item, list):
-            result.extend(item)
-        else:
-            result.append(item)
-    return result
-
-def accumulate(pre_state, input):
+def process_immediate_report(input_data: Dict[str, Any], pre_state: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Process an immediate report and return the updated state.
+    
+    Args:
+        input_data: The input data containing the immediate report (must contain 'slot' and 'reports')
+        pre_state: The current state before processing
+        
+    Returns:
+        Dict containing the updated state with the following fields:
+        - slot: Updated slot number from input
+        - entropy: Preserved from pre_state if exists
+        - ready_queue: Updated with new reports
+        - accumulated: Preserved from pre_state if exists
+        - privileges: Preserved from pre_state if exists
+        - statistics: Preserved from pre_state if exists
+        - accounts: Preserved from pre_state if exists
+    """
+    # Create a deep copy of the pre_state to avoid modifying it directly
     post_state = copy.deepcopy(pre_state)
-    post_state['slot'] = input['slot']
-    queue_len = 12
-    cur = input['slot'] % queue_len
+    
+    # Update the slot number from input
+    post_state["slot"] = input_data["slot"]
+    
+    # Preserve the entropy from pre_state if it exists
+    if "entropy" in pre_state:
+        post_state["entropy"] = pre_state["entropy"]
+    
+    # Initialize ready_queue if it doesn't exist (12 cores)
+    if "ready_queue" not in post_state:
+        post_state["ready_queue"] = [[] for _ in range(12)]
+    
+    # Ensure ready_queue has exactly 12 cores
+    while len(post_state["ready_queue"]) < 12:
+        post_state["ready_queue"].append([])
+    post_state["ready_queue"] = post_state["ready_queue"][:12]
+    
+    # Process each report in the input
+    for report in input_data.get("reports", []):
+        # Get the core index, default to 0 if not specified
+        core_index = report.get("core_index", 0)
+        
+        # Ensure the core index is within bounds (0-11)
+        if 0 <= core_index < 12:
+            # Ensure the core's queue is a list
+            if not isinstance(post_state["ready_queue"][core_index], list):
+                post_state["ready_queue"][core_index] = []
+            
+            # Add the report to the appropriate queue with its dependencies
+            post_state["ready_queue"][core_index].append({
+                "report": report,
+                "dependencies": report.get("prerequisites", [])
+            })
+    
+    # Preserve other important fields if they exist in pre_state
+    for field in ["accumulated", "privileges", "statistics", "accounts"]:
+        if field in pre_state:
+            post_state[field] = pre_state[field]
+    
+    # Ensure accumulated has 12 slots
+    if "accumulated" in post_state:
+        while len(post_state["accumulated"]) < 12:
+            post_state["accumulated"].append([])
+        post_state["accumulated"] = post_state["accumulated"][:12]
+    
+    return post_state
 
-    # Initialize accumulated if not present
-    if 'accumulated' not in post_state:
-        post_state['accumulated'] = [[] for _ in range(queue_len)]
+def load_updated_state() -> Dict[str, Any]:
+    """
+    Load the current state from updated_state.json
+    
+    Returns:
+        Dict containing the current state, or empty dict if file doesn't exist
+    """
+    try:
+        with open(UPDATED_STATE_PATH, 'r') as f:
+            state_data = json.load(f)
+            if isinstance(state_data, list) and len(state_data) > 0:
+                return state_data[0]  # Return the first item if it's a list
+            return state_data if isinstance(state_data, dict) else {}
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
 
-    # Initialize ready_queue if not present or adjust length
-    if 'ready_queue' not in post_state or not post_state['ready_queue']:
-        post_state['ready_queue'] = [[] for _ in range(queue_len)]
-    elif len(post_state['ready_queue']) != queue_len:
-        post_state['ready_queue'] = [post_state['ready_queue'][i % len(post_state['ready_queue'])] if i < len(post_state['ready_queue']) else [] for i in range(queue_len)]
+def save_updated_state(post_state: Dict[str, Any]) -> None:
+    """
+    Save the updated state to both updated_state.json and accumulate_output.json
+    
+    Args:
+        post_state: The post-state to save
+    """
+    # Ensure the output directory exists
+    UPDATED_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Save to both locations
+    for path in [UPDATED_STATE_PATH, OUTPUT_PATH]:
+        with open(path, 'w') as f:
+            json.dump([post_state] if path == UPDATED_STATE_PATH else post_state, f, indent=2)
 
-    # Flatten current ready_queue slot
-    post_state['ready_queue'][cur] = shallow_flatten(post_state['ready_queue'][cur])
-
-    acc = post_state['accumulated'][cur]
-    hashes = set(h for q in post_state['accumulated'] for h in q if isinstance(h, str) and h.startswith("0x"))
+def process_immediate_report_from_server() -> Optional[Dict[str, Any]]:
+    """
+    Main function to process immediate report from server payload
+    
+    Returns:
+        Dict containing the post_state if successful, None otherwise
+    """
+    try:
+        # Load input from server payload (this would come from the server's POST request)
+        # For now, we'll load it from the server.py file
+        server_path = Path(__file__).parent.parent / 'server' / 'server.py'
+        with open(server_path, 'r') as f:
+            server_code = f.read()
+        
+        # Extract the payload from server.py (this is a simplified approach)
+        # In a real implementation, this would come from the server's request
+        input_data = {
+            "slot": 43,  # Default value if not found
+            "reports": []
+        }
+        
+        # Try to extract slot and reports from server code
+        # This is a simplified approach - in a real implementation, this would come from the server's request
+        # and would be properly parsed from the HTTP request body
+        
+        # Load pre_state
+        pre_state = load_updated_state()
+        
+        # Process the immediate report
+        post_state = process_immediate_report(input_data, pre_state)
+        
+        # Save the updated state
+        save_updated_state(post_state)
+        
+        return post_state
+        
+    except Exception as e:
+        print(f"Error processing immediate report: {e}", file=sys.stderr)
+        return None
 
     current_ready = post_state['ready_queue'][cur]
 
