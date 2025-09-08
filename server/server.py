@@ -664,7 +664,7 @@ def load_updated_state():
     try:
         if not os.path.exists(updated_state_path):
             logger.warning(f"Updated state file not found at {updated_state_path}. Creating default.")
-            updated_data = {"pre_state": deepcopy(DEFAULT_SAMPLE_DATA["pre_state"]), "metadata": {}}
+            updated_data = {"pre_state": deepcopy(DEFAULT_SAMPLE_DATA["pre_state"])}
             with open(updated_state_path, 'w') as f:
                 json.dump(updated_data, f, indent=2)
             logger.info(f"Default updated state created at {updated_state_path}")
@@ -672,22 +672,51 @@ def load_updated_state():
         
         with open(updated_state_path, 'r') as f:
             updated_data = json.load(f)
-            logger.debug(f"Loaded updated_state.json: {updated_data}")
-            pre_state = updated_data.get('pre_state', {})
-            # Extract only relevant fields
-            relevant_pre_state = {
-                'psi': pre_state.get('psi', {"good": [], "bad": [], "wonky": [], "offenders": []}),
-                'rho': pre_state.get('rho', []),
-                'tau': pre_state.get('tau', 0),
-                'kappa': pre_state.get('kappa', []),
-                'lambda': pre_state.get('lambda', []),
-                'vals_curr_stats': pre_state.get('vals_curr_stats', []),
-                'vals_last_stats': pre_state.get('vals_last_stats', []),
-                'slot': pre_state.get('slot', 0),
-                'curr_validators': pre_state.get('curr_validators', [])
-            }
-            logger.debug(f"Extracted relevant pre_state: {relevant_pre_state}")
-            return relevant_pre_state
+            
+        # Handle case where file contains a list with one item
+        if isinstance(updated_data, list) and len(updated_data) > 0:
+            if isinstance(updated_data[0], dict):
+                updated_data = updated_data[0]
+            else:
+                # If the first item is not a dict, use default
+                logger.warning("Unexpected format in updated_state.json, using default state")
+                return deepcopy(DEFAULT_SAMPLE_DATA["pre_state"])
+        
+        # If we still have a list, use the first item that's a dict
+        if isinstance(updated_data, list):
+            for item in updated_data:
+                if isinstance(item, dict):
+                    updated_data = item
+                    break
+            else:
+                logger.warning("No valid dictionary found in updated_state.json, using default state")
+                return deepcopy(DEFAULT_SAMPLE_DATA["pre_state"])
+            
+        logger.debug(f"Loaded updated_state.json: {updated_data}")
+        pre_state = updated_data.get('pre_state', {})
+        
+        # If pre_state is a list, try to get the first item
+        if isinstance(pre_state, list) and len(pre_state) > 0:
+            if isinstance(pre_state[0], dict):
+                pre_state = pre_state[0]
+            else:
+                logger.warning("Unexpected format in pre_state, using default state")
+                return deepcopy(DEFAULT_SAMPLE_DATA["pre_state"])
+        
+        # Extract only relevant fields
+        relevant_pre_state = {
+            'psi': pre_state.get('psi', {"good": [], "bad": [], "wonky": [], "offenders": []}),
+            'rho': pre_state.get('rho', []),
+            'tau': pre_state.get('tau', 0),
+            'kappa': pre_state.get('kappa', []),
+            'lambda': pre_state.get('lambda', []),
+            'vals_curr_stats': pre_state.get('vals_curr_stats', []),
+            'vals_last_stats': pre_state.get('vals_last_stats', []),
+            'slot': pre_state.get('slot', 0),
+            'curr_validators': pre_state.get('curr_validators', [])
+        }
+        logger.debug(f"Extracted relevant pre_state: {relevant_pre_state}")
+        return relevant_pre_state
     except json.JSONDecodeError as e:
         logger.error(f"Invalid JSON in updated state file: {str(e)}")
         return deepcopy(DEFAULT_SAMPLE_DATA["pre_state"])
@@ -927,31 +956,43 @@ def create_updated_state_file(new_state_data: Dict[str, Any], block_input: Dict[
             try:
                 with open(updated_state_path, 'r') as f:
                     existing_data = json.load(f)
-                # Deep merge existing data into our base
-                updated_data = deep_merge(updated_data, existing_data)
-                logger.info("Merged existing state with original sample data")
+                    
+                # Handle case where existing data is a list with one item
+                if isinstance(existing_data, list) and len(existing_data) == 1:
+                    existing_data = existing_data[0]
+                
+                # Ensure we have a dictionary to merge
+                if isinstance(existing_data, dict):
+                    # Deep merge existing data into our base
+                    updated_data = deep_merge(updated_data, existing_data)
+                    logger.info("Merged existing state with original sample data")
+                else:
+                    logger.warning(f"Unexpected data type in existing state file: {type(existing_data)}")
+                    
             except json.JSONDecodeError as e:
                 logger.error(f"Error reading existing state file: {e}")
                 # If we can't read the existing file, continue with just the sample data
         
+        # Ensure updated_data has a pre_state key that's a dictionary
+        if "pre_state" not in updated_data or not isinstance(updated_data["pre_state"], dict):
+            updated_data["pre_state"] = {}
+        
         # Update the pre_state by merging with new_state_data
-        if "pre_state" in updated_data and isinstance(updated_data["pre_state"], dict):
-            updated_data["pre_state"] = deep_merge(updated_data["pre_state"], new_state_data)
-        else:
-            updated_data["pre_state"] = deep_clone(new_state_data)
+        updated_data["pre_state"] = deep_merge(updated_data["pre_state"], new_state_data)
         
         # Update the input with the new block input
         updated_data["input"] = deep_clone(block_input)
         
         # Ensure metadata exists and update it
-        if "metadata" not in updated_data:
+        if "metadata" not in updated_data or not isinstance(updated_data["metadata"], dict):
             updated_data["metadata"] = {}
         
         # Update metadata fields while preserving any existing ones
         updated_data["metadata"].update({
             "last_updated": str(datetime.now()),
             "current_slot": new_state_data.get("slot", new_state_data.get("tau", updated_data["metadata"].get("current_slot", 0))),
-            "updated_from_original": sample_data_path
+            "updated_from_original": sample_data_path,
+            "updated_by": "server"
         })
         
         # Create directory if it doesn't exist
@@ -959,7 +1000,7 @@ def create_updated_state_file(new_state_data: Dict[str, Any], block_input: Dict[
         
         # Write to a temporary file first
         with open(temp_path, 'w') as f:
-            json.dump(updated_data, f, indent=2, sort_keys=True)
+            json.dump(updated_data, f, indent=2, sort_keys=True, default=str)
         
         # Atomically replace the old file with the new one
         os.replace(temp_path, updated_state_path)
@@ -1505,8 +1546,21 @@ async def process_block(request: BlockProcessRequest):
         )
 
     except Exception as e:
-        logger.error(f"Block processing failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Block processing failed: {str(e)}")
+        import traceback
+        error_traceback = traceback.format_exc()
+        error_msg = f"Block processing failed: {str(e)}\n\nFull traceback:\n{error_traceback}"
+        logger.error(error_msg)
+        
+        # Return a more detailed error response
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "Block processing failed",
+                "message": str(e),
+                "type": type(e).__name__,
+                "traceback": error_traceback.split('\n')
+            }
+        )
 
 
 
