@@ -14,7 +14,7 @@
     "beta": [
       {
         "header_hash": "0x7ea9180615fb57dd21c84793bf2eeee78a29c6193be0bbdaf03c01bd2532b914",
-        "state_root": "0x44d5c1f3fc4b4ae9f390ea663f6150ab9160e5a847ad96db022aca10634d9faf",
+        "state_root": "0xe192165a13296d1b75224380e38a330f0597ea05e753c9f751059bc2b7ed9278",
         "mmr": {
           "peaks": [
             "0x2bf25e156a174f179a3c6223d6193d26a9de54d8e754e540050145bc5efe0493"

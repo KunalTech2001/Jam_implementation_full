@@ -107,12 +107,6 @@ def save_updated_state(post_state: Dict[str, Any]) -> None:
             json.dump([post_state] if path == UPDATED_STATE_PATH else post_state, f, indent=2)
 
 def process_immediate_report_from_server() -> Optional[Dict[str, Any]]:
-    """
-    Main function to process immediate report from server payload
-    
-    Returns:
-        Dict containing the post_state if successful, None otherwise
-    """
     try:
         # Load input from server payload (this would come from the server's POST request)
         # For now, we'll load it from the server.py file

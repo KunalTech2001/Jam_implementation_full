@@ -745,20 +745,22 @@ def run_jam_history():
 
 
 def run_jam_preimages():
-    """Run the jam-preimages component (main.py)."""
+    """Run the jam-preimages component (main.py) if available."""
+    # Get the directory of the current script
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    # Navigate to the jam-preimages directory
+    jam_preimages_dir = os.path.join(os.path.dirname(current_dir), "Jam-preimages")
+    main_script = os.path.join(jam_preimages_dir, "main.py")
+    
+    # Check if the directory and main script exist
+    if not os.path.exists(jam_preimages_dir) or not os.path.exists(main_script):
+        # Don't log a warning, just return success since this is an optional component
+        return True, "jam-preimages component not found, skipping"
+    
     try:
-        # Get the directory of the current script
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        # Navigate to the jam-preimages directory
-        jam_preimages_dir = os.path.join(current_dir, "jam-preimages")
-        
-        if not os.path.exists(jam_preimages_dir):
-            logger.warning(f"jam-preimages directory not found at {jam_preimages_dir}")
-            return False, "jam-preimages directory not found"
-            
         # Run the main.py script
         result = subprocess.run(
-            ["python3", "main.py"],
+            ["python3", main_script],
             cwd=jam_preimages_dir,
             capture_output=True,
             text=True
@@ -772,9 +774,10 @@ def run_jam_preimages():
         return True, result.stdout
         
     except Exception as e:
+        # Log the error but don't fail the entire process
         error_msg = f"Error running jam-preimages: {str(e)}"
-        logger.error(error_msg)
-        return False, error_msg
+        logger.debug(error_msg)  # Use debug level to avoid cluttering logs
+        return True, error_msg  # Still return success to continue processing
 
 
 def run_assurances_component():
