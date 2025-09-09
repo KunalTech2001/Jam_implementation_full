@@ -299,6 +299,16 @@
       },
       {
         "header_hash": "0xb9a07089b65517ade3874fc891cc6206dfe5e753ac3bfb8dbf2cf0fe514b2a98",
+        "mmr": {
+          "count": 0,
+          "peaks": []
+        },
+        "reported": [],
+        "state_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "timestamp": 0
+      },
+      {
+        "header_hash": "0xb9a07089b65517ade3874fc891cc6206dfe5e753ac3bfb8dbf2cf0fe514b2a98",
         "state_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
         "mmr": {
           "peaks": [],
@@ -354,7 +364,7 @@
     "metadata": {
       "assurance_fields_updated": 3,
       "current_slot": 1,
-      "last_updated": "2025-09-08T12:32:24.424086",
+      "last_updated": "2025-09-09T11:47:50.042717",
       "updated_by": "assurances_component",
       "updated_from_original": "/Users/anish/Desktop/fulljam/Jam_implementation_full/server/sample_data.json"
     },

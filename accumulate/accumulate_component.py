@@ -8,23 +8,7 @@ UPDATED_STATE_PATH = Path(__file__).parent.parent / 'server' / 'updated_state.js
 OUTPUT_PATH = Path(__file__).parent / 'accumulate_output.json'
 
 def process_immediate_report(input_data: Dict[str, Any], pre_state: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Process an immediate report and return the updated state.
-    
-    Args:
-        input_data: The input data containing the immediate report (must contain 'slot' and 'reports')
-        pre_state: The current state before processing
-        
-    Returns:
-        Dict containing the updated state with the following fields:
-        - slot: Updated slot number from input
-        - entropy: Preserved from pre_state if exists
-        - ready_queue: Updated with new reports
-        - accumulated: Preserved from pre_state if exists
-        - privileges: Preserved from pre_state if exists
-        - statistics: Preserved from pre_state if exists
-        - accounts: Preserved from pre_state if exists
-    """
+ 
     # Create a deep copy of the pre_state to avoid modifying it directly
     post_state = copy.deepcopy(pre_state)
     
@@ -75,12 +59,7 @@ def process_immediate_report(input_data: Dict[str, Any], pre_state: Dict[str, An
     return post_state
 
 def load_updated_state() -> Dict[str, Any]:
-    """
-    Load the current state from updated_state.json
-    
-    Returns:
-        Dict containing the current state, or empty dict if file doesn't exist
-    """
+
     try:
         with open(UPDATED_STATE_PATH, 'r') as f:
             state_data = json.load(f)
@@ -91,12 +70,7 @@ def load_updated_state() -> Dict[str, Any]:
         return {}
 
 def save_updated_state(post_state: Dict[str, Any]) -> None:
-    """
-    Save the updated state to both updated_state.json and accumulate_output.json
-    
-    Args:
-        post_state: The post-state to save
-    """
+  
     # Ensure the output directory exists
     UPDATED_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -120,11 +94,7 @@ def process_immediate_report_from_server() -> Optional[Dict[str, Any]]:
             "slot": 43,  # Default value if not found
             "reports": []
         }
-        
-        # Try to extract slot and reports from server code
-        # This is a simplified approach - in a real implementation, this would come from the server's request
-        # and would be properly parsed from the HTTP request body
-        
+     
         # Load pre_state
         pre_state = load_updated_state()
         
