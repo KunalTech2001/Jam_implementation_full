@@ -17,13 +17,13 @@ def load_updated_state(file_path: str) -> dict:
     """
     # Default hardcoded values
     default_input = {
-        'header_hash': '0x37fe33f96de26f26d8c256e3b5baed0fbc28e1824f1844e0e1417b5342863740',
-        'parent_state_root': '0x17e901a3e6e660fcb31214ccaed62b0d43df9d5e91c31609cf2acf5844d7f625',
-        'accumulate_root': '0x8720b97ddd6acc0f6eb66e095524038675a4e4067adc10ec39939eaefc47d842',
+        'header_hash': '0x47ga43f96de26f26d8c256e3b5baed0ead28e1824f1844e0e1417b5342863740',
+        'parent_state_root': '0x18a801a3e6e660fcb31214ccaed62b0d43df9d5e91c31609cf2acf5844d7f625',
+        'accumulate_root': '0xa820b97ddd6acc0f6eb66e095524038675a4e4067adc10ec39939eaefc47d842',
         'work_packages': [
             {
                 'hash': '0x303026af983b91393c6b31e972263759f72c5e7656c00b267e9b61292252c125',
-                'exports_root': '0x3d16ed66bae11acbdccc7015b4ee5c1bf87c864a7c930f78f59368280551f60d'
+                'exports_root': '0x3d26ea66bae21acbdccc7015b4ee5c1bf87c864a7c930f78f59368280551f60d'
             }
         ]
     }

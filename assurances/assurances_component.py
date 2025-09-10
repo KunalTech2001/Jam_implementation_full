@@ -6,9 +6,14 @@ import copy
 import sys
 from pathlib import Path
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+state_file = os.path.join(BASE_DIR, "..", "server", "updated_state.json")
+STATE_FILE = os.path.normpath(state_file)
+post_state_file = os.path.join(BASE_DIR, ".", "assurances", "post_state.json")
+POST_STATE_FILE = os.path.normpath(state_file)
 # Define paths
-STATE_FILE = "/Users/anish/Desktop/fulljam/Jam_implementation_full/server/updated_state.json"
-POST_STATE_FILE = "/Users/anish/Desktop/fulljam/Jam_implementation_full/assurances/post_state.json"
+# STATE_FILE = "/Users/anish/Desktop/fulljam/Jam_implementation_full/server/updated_state.json"
+# POST_STATE_FILE = "/Users/anish/Desktop/fulljam/Jam_implementation_full/assurances/post_state.json"
 
 # Error codes from assurances.py
 ERROR_CODES = {

@@ -1,10 +1,4 @@
-#!/usr/bin/env python3
-"""
-Process updated_state.json for preimage data.
 
-This script reads from the server's updated_state.json file, processes it
-using the preimage STF, and saves the results back to updated_state.json.
-"""
 import os
 import sys
 import json
@@ -46,15 +40,7 @@ except ImportError as e:
     sys.exit(1)
 
 def create_test_vector_from_state(state_data: Dict[str, Any]) -> Optional[PreimagesTestVector]:
-    """
-    Create a PreimagesTestVector from the state data.
-    
-    Args:
-        state_data: Dictionary containing 'input' and 'pre_state' data
-        
-    Returns:
-        PreimagesTestVector or None if there was an error
-    """
+
     try:
         logger.info("Creating test vector from state data")
         
@@ -386,8 +372,12 @@ def main() -> None:
     5. Updates the post_state in the state file
     """
     try:
+
+        BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+        state_file = os.path.join(BASE_DIR, "..", "server", "updated_state.json")
+        updated_state_path = os.path.normpath(state_file)
         # Path to the updated_state.json file
-        updated_state_path = '/Users/anish/Desktop/fulljam/Jam_implementation_full/server/updated_state.json'
+        # updated_state_path = '/Users/anish/Desktop/fulljam/Jam_implementation_full/server/updated_state.json'
         
         # Check if the file exists
         if not os.path.exists(updated_state_path):

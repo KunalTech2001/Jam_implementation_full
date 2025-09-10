@@ -3,8 +3,12 @@ import os
 from pathlib import Path
 
 def update_accounts_in_state():
+
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    state_file = os.path.join(BASE_DIR, "..", "server", "updated_state.json")
+    state_file = os.path.normpath(state_file)
     # Path to the updated_state.json file
-    state_file = Path("/Users/anish/Desktop/fulljam/Jam_implementation_full/server/updated_state.json")
+    # state_file = Path("/Users/anish/Desktop/fulljam/Jam_implementation_full/server/updated_state.json")
     
     # Check if the file exists
     if not state_file.exists():

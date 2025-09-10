@@ -89,12 +89,16 @@ def main():
     script_dir = Path(__file__).parent
     results_dir = script_dir / 'results'
     
+    # BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    # state_file = os.path.join(BASE_DIR, "..", "server", "updated_state.json")
+    # updated_state_path = os.path.normpath(state_file)
     # Path to the updated_state.json file
-    updated_state_path = Path('/Users/anish/Desktop/fulljam/Jam_implementation_full/server/updated_state.json')
+    # updated_state_path = Path('/Users/anish/Desktop/fulljam/Jam_implementation_full/server/updated_state.json')
     
+    updated_state_path = (script_dir / ".." / "server" / "updated_state.json").resolve()
+
     results_dir.mkdir(exist_ok=True)
-    
-    # Check if the input file exists before proceeding
+
     if not updated_state_path.exists():
         print(f"❌ Input file not found: {updated_state_path}")
         print("The jam_history component requires the input file to run.")
