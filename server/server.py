@@ -265,10 +265,7 @@ def compare_states(state, post_state):
 
 @app.post("/run-jam-reports", response_model=StateResponse)
 async def run_jam_reports(payload: dict):
-    """
-    Run JAM Reports logic using input from payload and pre_state from updated_state.json.
-    Store post_state in updated_state.json.
-    """
+
     try:
         # 1. Load pre_state from updated_state.json
         if not os.path.exists(updated_state_path):
@@ -439,12 +436,28 @@ def run_reports_component():
         logger.error(f"Error running Reports component: {str(e)}", exc_info=True)
         return False, str(e)
 
-def run_jam_history():
-    """Run the jam_history component (test.py)."""
+def run_jam_history(payload: Optional[Dict[str, Any]] = None):
+    """Run the jam_history component (test.py).
+    
+    Args:
+        payload: The payload data to pass to the jam_history component
+        
+    Returns:
+        tuple: (success: bool, output: str)
+    """
     try:
         logger.info(f"Attempting to run jam_history component: {jam_history_script}")
+        
+        cmd = ["python3", jam_history_script]
+        
+        # If payload is provided, pass it as a JSON string argument
+        if payload is not None:
+            payload_str = json.dumps(payload)
+            cmd.extend(["--payload", payload_str])
+            logger.debug(f"Passing payload to jam_history: {payload_str[:200]}...")
+        
         result = subprocess.run(
-            ["python3", jam_history_script],
+            cmd,
             capture_output=True,
             text=True,
             check=True
@@ -452,10 +465,11 @@ def run_jam_history():
         logger.info(f"jam_history component executed successfully. Output: {result.stdout}")
         return True, result.stdout
     except subprocess.CalledProcessError as e:
-        logger.error(f"Failed to run jam_history component: {e.stderr}")
+        logger.error(f"Failed to run jam_history component. Error: {e.stderr}")
         return False, e.stderr
     except Exception as e:
         logger.error(f"Unexpected error while running jam_history component: {str(e)}")
+        return False, str(e)
         return False, str(e)
 
 
@@ -496,15 +510,7 @@ def run_jam_preimages():
 
 
 def run_assurances_component():
-    """Run the assurances component and merge its output with the current state.
     
-    This function will:
-    1. Load the current state from updated_state.json
-    2. Load the post_state from assurances/post_state.json
-    3. Merge the assurance-related fields from post_state into the current state
-    4. Preserve all other fields in the current state
-    5. Save the merged state back to updated_state.json
-    """
     try:
         import json
         from pathlib import Path
@@ -1242,8 +1248,25 @@ async def process_block(request: BlockProcessRequest):
             if not reports_success:
                 logger.warning(f"Reports component execution completed with warnings: {reports_output}")
             
-            # Run jam_history after successful state update
-            jam_history_success, jam_history_output = run_jam_history()
+            # Prepare payload for jam_history with all required fields
+            header_dict = request.block.header.dict()
+            # Ensure header_hash is included in the header
+            if 'header_hash' not in header_dict and hasattr(request.block, 'header_hash'):
+                header_dict['header_hash'] = request.block.header_hash
+            
+            jam_history_payload = {
+                'block': {
+                    'header': header_dict,
+                    'extrinsic': request.block.extrinsic.dict()
+                },
+                # Include the header_hash at the top level for backward compatibility
+                'header_hash': header_dict.get('header_hash')
+            }
+            
+            logger.debug(f"Prepared jam_history payload with header fields: {list(header_dict.keys())}")
+            
+            # Run jam_history after successful state update with the payload
+            jam_history_success, jam_history_output = run_jam_history(jam_history_payload)
             if not jam_history_success:
                 logger.warning(f"jam_history execution completed with warnings: {jam_history_output}")
             

@@ -578,16 +578,6 @@
         }
       ],
       "timestamp": 1757589492
-    },
-    {
-      "header_hash": "0xb9a07089b65517ade3874fc891cc6206dfe5e753ac3bfb8dbf2cf0fe514b2a98",
-      "state_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
-      "mmr": {
-        "peaks": [],
-        "count": 0
-      },
-      "reported": [],
-      "timestamp": 0
     }
   ],
   "cores_statistics": [
