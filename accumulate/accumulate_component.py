@@ -1,14 +1,47 @@
 import copy
 import json
+import logging
+import os
+import sys
+import time
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List, Tuple
+import hashlib
+import requests
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+class PVMConfig:
+    def __init__(self):
+        self.base_url = os.getenv("PVM_BASE_URL", "http://127.0.0.1:8080")
+        self.timeout = int(os.getenv("PVM_TIMEOUT_SECONDS", "15"))
+        self.max_retries = int(os.getenv("PVM_MAX_RETRIES", "3"))
+        self.retry_delay = float(os.getenv("PVM_RETRY_DELAY_SECONDS", "0.5"))
+
+# Custom exceptions
+class PVMError(Exception):
+    """Base exception for PVM-related errors"""
+    pass
+
+class PVMConnectionError(PVMError):
+    """Raised when unable to connect to PVM"""
+    pass
+
+class PVMResponseError(PVMError):
+    """Raised when PVM returns an error response"""
+    pass
+
+# Global config instance
+pvm_config = PVMConfig()
 
 # Constants
 UPDATED_STATE_PATH = Path(__file__).parent.parent / 'server' / 'updated_state.json'
 OUTPUT_PATH = Path(__file__).parent / 'accumulate_output.json'
 
 def process_immediate_report(input_data: Dict[str, Any], pre_state: Dict[str, Any]) -> Dict[str, Any]:
- 
+
     # Create a deep copy of the pre_state to avoid modifying it directly
     post_state = copy.deepcopy(pre_state)
     
@@ -168,3 +201,194 @@ def process_immediate_report_from_server() -> Optional[Dict[str, Any]]:
         current_ready.append({'report': rpt, 'dependencies': list(deps), 'stale': pkg_h in deps})
 
     return {'ok': merkle_root(acc)}, post_state
+
+# ---------------- New integration helpers for jam_pvm ----------------
+
+JAM_PVM_BASE = "http://127.0.0.1:8080"
+ACCUMULATE_JSON_ENDPOINT = f"{JAM_PVM_BASE}/service/accumulate_json"
+
+def bytes_sha256_hex(data: bytes) -> str:
+    h = hashlib.sha256()
+    h.update(data)
+    return h.hexdigest()
+
+def build_accumulate_item_json(
+    auth_output_hex: str,
+    payload_bytes: bytes,
+    ok: bool = True,
+    work_output_bytes: Optional[bytes] = None,
+    package_hash_hex: str = "00" * 32,
+    exports_root_hex: str = "00" * 32,
+    authorizer_hash_hex: str = "00" * 32,
+) -> Dict[str, Any]:
+    """
+    Build a JSON item compatible with jam_pvm `/service/accumulate_json`.
+    - payload hash is computed as sha256(payload_bytes)
+    - work_output_hex is required when ok=True
+    """
+    item: Dict[str, Any] = {
+        "auth_output_hex": auth_output_hex,
+        "payload_hash_hex": bytes_sha256_hex(payload_bytes),
+        "result_ok": bool(ok),
+        "work_output_hex": work_output_bytes.hex() if (ok and work_output_bytes is not None) else None,
+        "package_hash_hex": package_hash_hex,
+        "exports_root_hex": exports_root_hex,
+        "authorizer_hash_hex": authorizer_hash_hex,
+    }
+    if ok and item["work_output_hex"] is None:
+        raise ValueError("work_output_bytes must be provided when ok=True")
+    return item
+
+def post_accumulate_json_with_retry(
+    slot: int, 
+    service_id: int, 
+    items: List[Dict[str, Any]], 
+    config: Optional[PVMConfig] = None
+) -> Dict[str, Any]:
+    """
+    Post accumulate data to jam_pvm JSON endpoint with retry logic.
+    
+    Args:
+        slot: The slot number
+        service_id: The service ID
+        items: List of dicts built by build_accumulate_item_json
+        config: Optional PVM configuration
+        
+    Returns:
+        Dict containing the PVM response
+        
+    Raises:
+        PVMConnectionError: If unable to connect to PVM after retries
+        PVMResponseError: If PVM returns an error response
+    """
+    config = config or pvm_config
+    endpoint = f"{config.base_url}/service/accumulate_json"
+    payload = {
+        "slot": int(slot),
+        "service_id": int(service_id),
+        "items": items,
+    }
+    
+    last_error = None
+    for attempt in range(config.max_retries + 1):
+        try:
+            resp = requests.post(
+                endpoint,
+                json=payload,
+                timeout=config.timeout
+            )
+            resp.raise_for_status()
+            return resp.json()
+            
+        except requests.RequestException as e:
+            last_error = e
+            if attempt < config.max_retries:
+                delay = config.retry_delay * (2 ** attempt)  # Exponential backoff
+                logger.warning(
+                    f"Attempt {attempt + 1}/{config.max_retries} failed. "
+                    f"Retrying in {delay:.2f}s. Error: {str(e)}"
+                )
+                time.sleep(delay)
+                continue
+            raise PVMConnectionError(
+                f"Failed to connect to PVM after {config.max_retries} attempts: {str(e)}"
+            ) from e
+        except Exception as e:
+            raise PVMResponseError(f"Error processing PVM response: {str(e)}") from e
+
+def process_with_pvm(
+    input_data: Dict[str, Any],
+    pre_state: Dict[str, Any],
+    config: Optional[PVMConfig] = None
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """
+    Process input data with PVM integration using dynamic payload.
+    
+    Args:
+        input_data: Dynamic input data containing reports and other fields
+        pre_state: Current state from the system
+        config: Optional PVM configuration
+        
+    Returns:
+        Tuple of (updated_state, pvm_responses)
+    """
+    # 1. Process the immediate report to get updated state
+    post_state = process_immediate_report(input_data, pre_state)
+    
+    # 2. Extract PVM-related data from input payload
+    slot = input_data.get("slot")
+    if slot is None:
+        logger.warning("No slot provided in input_data, using current slot from state")
+        slot = pre_state.get("slot")
+    
+    # 3. Prepare PVM items from input reports
+    items = []
+    for report in input_data.get("reports", []):
+        try:
+            # Get service_id from report results if available
+            service_id = None
+            results = report.get("results", [])
+            if results and isinstance(results[0], dict):
+                service_id = results[0].get("service_id")
+            
+            # Get package hash if available
+            package_hash = "00" * 32
+            if "package_spec" in report and isinstance(report["package_spec"], dict):
+                package_hash = report["package_spec"].get("hash", package_hash)
+            
+            # Get work output (result) if available
+            work_output = None
+            if results and isinstance(results[0], dict) and "result" in results[0]:
+                result = results[0]["result"]
+                if isinstance(result, dict) and "ok" in result:
+                    work_output = result["ok"]
+                    if work_output and isinstance(work_output, str):
+                        work_output = work_output.removeprefix("0x").encode()
+            
+            # Build the PVM item
+            payload_bytes = json.dumps(report, sort_keys=True).encode("utf-8")
+            item = build_accumulate_item_json(
+                auth_output_hex="00",  # Should be replaced with actual auth
+                payload_bytes=payload_bytes,
+                ok=work_output is not None,
+                work_output_bytes=work_output,
+                package_hash_hex=package_hash,
+                exports_root_hex="00" * 32,  # Should be replaced with actual exports root
+                authorizer_hash_hex="00" * 32  # Should be replaced with actual authorizer
+            )
+            items.append((service_id, item))
+            
+        except Exception as e:
+            logger.error(f"Failed to prepare PVM item from report: {e}")
+            continue
+    
+    # 4. Group items by service_id and send to PVM
+    pvm_responses = {}
+    service_items = {}
+    
+    # Group items by service_id
+    for service_id, item in items:
+        if service_id not in service_items:
+            service_items[service_id] = []
+        service_items[service_id].append(item)
+    
+    # Send each service's items to PVM
+    for service_id, service_items_list in service_items.items():
+        if service_id is None:
+            logger.warning("Skipping items with no service_id")
+            continue
+            
+        try:
+            pvm_response = post_accumulate_json_with_retry(
+                slot=slot,
+                service_id=service_id,
+                items=service_items_list,
+                config=config
+            )
+            pvm_responses[service_id] = pvm_response
+            logger.info(f"Successfully sent {len(service_items_list)} items to PVM for service {service_id}")
+        except Exception as e:
+            logger.error(f"Failed to send items to PVM for service {service_id}: {e}")
+            pvm_responses[service_id] = {"error": str(e), "service_id": service_id}
+    
+    return post_state, pvm_responses

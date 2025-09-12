@@ -370,6 +370,16 @@
     },
     {
       "header_hash": "0xb9a07089b65517ade3874fc891cc6206dfe5e753ac3bfb8dbf2cf0fe514b2a98",
+      "mmr": {
+        "count": 0,
+        "peaks": []
+      },
+      "reported": [],
+      "state_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "timestamp": 0
+    },
+    {
+      "header_hash": "0xb9a07089b65517ade3874fc891cc6206dfe5e753ac3bfb8dbf2cf0fe514b2a98",
       "state_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
       "mmr": {
         "peaks": [],
@@ -460,9 +470,9 @@
   "metadata": {
     "assurance_fields_updated": 3,
     "current_slot": 0,
-    "last_updated": "2025-09-10 16:15:01.802007",
+    "last_updated": "2025-09-10 17:53:45.624619",
     "updated_by": "server",
-    "updated_from_original": "/Users/hatim/Projects/jam_demo/Jam_implementation_full/server/sample_data.json"
+    "updated_from_original": "/Users/hatim/Projects/Jam_implementation_full/server/sample_data.json"
   },
   "offenders": [],
   "post_state": {

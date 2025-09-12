@@ -13,6 +13,7 @@ from accumulate_component import process_immediate_report, load_updated_state, s
 def load_input_from_server() -> Tuple[Dict[str, Any], Dict[str, Any]]:
     
     # Load pre_state from updated_state.json
+    
     pre_state = load_updated_state()
     
     

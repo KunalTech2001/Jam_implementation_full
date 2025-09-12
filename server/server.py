@@ -17,11 +17,21 @@ import psutil
 import subprocess
 
 
-# Add the src directory to the path to import jam modules
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
+# Add project root and src directory to sys.path so sibling packages are importable
+_THIS_DIR = os.path.dirname(__file__)
+_PROJECT_ROOT = os.path.abspath(os.path.join(_THIS_DIR, '..'))
+sys.path.append(_PROJECT_ROOT)
+sys.path.append(os.path.join(_PROJECT_ROOT, 'src'))
 
 from jam.core.safrole_manager import SafroleManager
 from jam.utils.helpers import deep_clone
+from accumulate.accumulate_component import (
+    post_accumulate_json_with_retry as post_accumulate_json,
+    load_updated_state as acc_load_state,
+    save_updated_state as acc_save_state,
+    process_immediate_report as acc_process,
+    process_with_pvm
+)
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -170,6 +180,37 @@ class StateResponse(BaseModel):
     data: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
 
+# ---- Pydantic models for forwarding accumulate to jam_pvm ----
+class AccumulateItemJSON(BaseModel):
+    auth_output_hex: str
+    payload_hash_hex: str
+    result_ok: bool = True
+    work_output_hex: Optional[str] = None
+    package_hash_hex: str = Field(default_factory=lambda: "00"*32)
+    exports_root_hex: str = Field(default_factory=lambda: "00"*32)
+    authorizer_hash_hex: str = Field(default_factory=lambda: "00"*32)
+
+class AccumulateForwardRequest(BaseModel):
+    slot: int
+    service_id: int
+    items: List[AccumulateItemJSON]
+
+class AccumulateForwardResponse(BaseModel):
+    success: bool
+    message: str
+    jam_pvm_response: Optional[Dict[str, Any]] = None
+
+# Request model matching accumulate_component expectations
+class AccumulateComponentInput(BaseModel):
+    slot: int
+    reports: List[Dict[str, Any]] = []
+
+class AccumulateProcessResponse(BaseModel):
+    success: bool
+    message: str
+    post_state: Dict[str, Any]
+    jam_pvm_response: Optional[Dict[str, Any]] = None
+
 def hydrate_map(obj):
     if obj is None:
         return obj
@@ -262,6 +303,79 @@ def compare_states(state, post_state):
     expected_state = initialize_state(post_state).to_plain_object()
     final_state = state.to_plain_object()
     return deep_equal(final_state, expected_state)
+
+@app.post("/accumulate/forward", response_model=AccumulateForwardResponse)
+async def accumulate_forward(req: AccumulateForwardRequest):
+    """
+    Forward accumulation items to jam_pvm JSON endpoint.
+    The request body mirrors jam_pvm's `/service/accumulate_json` payload.
+    """
+    try:
+        # Validate that work_output_hex is present when result_ok is True
+        for it in req.items:
+            if it.result_ok and not it.work_output_hex:
+                raise HTTPException(status_code=400, detail="work_output_hex is required when result_ok is true")
+        rsp = post_accumulate_json(
+            slot=req.slot,
+            service_id=req.service_id,
+            items=[it.model_dump() for it in req.items]
+        )
+        return AccumulateForwardResponse(success=True, message="Forwarded to jam_pvm", jam_pvm_response=rsp)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to forward to jam_pvm: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to forward to jam_pvm: {e}")
+
+@app.post("/accumulate/process", response_model=AccumulateProcessResponse)
+async def accumulate_process(payload: AccumulateComponentInput):
+    """
+    Accept input matching the accumulate component, update its state files,
+    and forward minimal AccumulateItem(s) to jam_pvm so that PVM state reflects the updates too.
+    
+    Requires at least one report in the payload.
+    """
+    try:
+        # 1) Validate that at least one report is provided
+        if not payload.reports:
+            raise HTTPException(
+                status_code=400,
+                detail="At least one report is required in the payload"
+            )
+            
+        # 2) Load pre_state from accumulate component storage
+        pre_state = acc_load_state()
+        if not isinstance(pre_state, dict):
+            pre_state = {}
+
+        # 3) Process the input data and update PVM
+        input_dict = {"slot": payload.slot, "reports": [dict(r) for r in payload.reports]}
+        
+        # 4) Use the new process_with_pvm function to handle both state update and PVM integration
+        post_state, pvm_responses = process_with_pvm(
+            input_data=input_dict,
+            pre_state=pre_state
+        )
+        
+        # 4) Save the updated state
+        acc_save_state(post_state)
+        
+        logger.info(f"Successfully processed {len(input_dict.get('reports', []))} reports")
+        
+        # Convert service_id keys to strings for JSON serialization
+        pvm_responses_str_keys = {str(k): v for k, v in pvm_responses.items()}
+        
+        return AccumulateProcessResponse(
+            success=True,
+            message="Successfully processed accumulate input and updated PVM state",
+            post_state=post_state,
+            jam_pvm_response=pvm_responses_str_keys,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to process accumulate input: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to process accumulate input: {e}")
 
 @app.post("/run-jam-reports", response_model=StateResponse)
 async def run_jam_reports(payload: dict):
@@ -1351,10 +1465,16 @@ async def get_updated_state():
             with open(updated_state_path, 'r') as f:
                 updated_state = json.load(f)
             
+            # Handle case where the state is an array (take first element as the state)
+            if isinstance(updated_state, list) and len(updated_state) > 0:
+                state_data = updated_state[0]
+            else:
+                state_data = updated_state
+                
             return StateResponse(
                 success=True,
                 message="Updated state retrieved successfully",
-                data=updated_state
+                data=state_data if isinstance(state_data, dict) else {}
             )
         else:
             return StateResponse(
