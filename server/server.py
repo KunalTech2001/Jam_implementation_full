@@ -107,6 +107,10 @@ class BlockHeader(BaseModel):
     author_index: int
     entropy_source: str
     seal: str
+    # Fields required by jam-history, made optional to not break other components
+    header_hash: Optional[str] = None
+    accumulate_root: Optional[str] = None
+    work_packages: Optional[List[Dict[str, Any]]] = []
 
 class Vote(BaseModel):
     vote: bool
@@ -452,18 +456,27 @@ def run_jam_history(payload: Optional[Dict[str, Any]] = None):
         
         # If payload is provided, pass it as a JSON string argument
         if payload is not None:
+            # The payload is the dictionary for jam-history, pass it as a JSON string.
             payload_str = json.dumps(payload)
             cmd.extend(["--payload", payload_str])
             logger.debug(f"Passing payload to jam_history: {payload_str[:200]}...")
         
+        # Use check=False to handle cases where the script might exit with an error
+        # and we want to capture the output without crashing the server.
         result = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
-            check=True
+            check=False
         )
-        logger.info(f"jam_history component executed successfully. Output: {result.stdout}")
-        return True, result.stdout
+
+        if result.returncode != 0:
+            logger.error(f"jam_history component failed with stderr: {result.stderr}")
+            # Still return the stdout for debugging purposes if any exists
+            return False, result.stdout + result.stderr
+        else:
+            logger.info(f"jam_history component executed successfully. Output: {result.stdout}")
+            return True, result.stdout
     except subprocess.CalledProcessError as e:
         logger.error(f"Failed to run jam_history component. Error: {e.stderr}")
         return False, e.stderr
@@ -1242,43 +1255,36 @@ async def process_block(request: BlockProcessRequest):
 
         try:
             # Update the state file first
-            update_state_file(combined_state, block_input)
-
+            # Run the Reports component first
             reports_success, reports_output = run_reports_component()
             if not reports_success:
                 logger.warning(f"Reports component execution completed with warnings: {reports_output}")
-            
-            # Prepare payload for jam_history with all required fields
-            header_dict = request.block.header.dict()
-            # Ensure header_hash is included in the header
-            if 'header_hash' not in header_dict and hasattr(request.block, 'header_hash'):
-                header_dict['header_hash'] = request.block.header_hash
-            
-            jam_history_payload = {
-                'block': {
-                    'header': header_dict,
-                    'extrinsic': request.block.extrinsic.dict()
-                },
-                # Include the header_hash at the top level for backward compatibility
-                'header_hash': header_dict.get('header_hash')
+
+            # Prepare the specific input object for jam-history as per user requirements
+            header_data = request.block.header.dict()
+            jam_history_input = {
+                "header_hash": header_data.get("header_hash"),
+                "parent_state_root": header_data.get("parent_state_root"),
+                "accumulate_root": header_data.get("accumulate_root"),
+                "work_packages": header_data.get("work_packages", [])
             }
             
-            logger.debug(f"Prepared jam_history payload with header fields: {list(header_dict.keys())}")
-            
-            # Run jam_history after successful state update with the payload
-            jam_history_success, jam_history_output = run_jam_history(jam_history_payload)
+            logger.debug(f"Passing structured input to jam_history: {json.dumps(jam_history_input)}")
+
+            # Run jam_history component with the correctly structured payload
+            jam_history_success, jam_history_output = run_jam_history(payload=jam_history_input)
             if not jam_history_success:
-                logger.warning(f"jam_history execution completed with warnings: {jam_history_output}")
+                logger.error(f"jam_history component failed: {jam_history_output}")
             
             # Run jam-preimages after jam_history completes
             jam_preimages_success, jam_preimages_output = run_jam_preimages()
             if not jam_preimages_success:
                 logger.warning(f"jam-preimages execution completed with warnings: {jam_preimages_output}")
             
-            # Run assurances component after all other components complete
+            # Run assurances component last to update the state with assurance data
             assurances_success, assurances_output = run_assurances_component()
             if not assurances_success:
-                logger.warning(f"assurances component execution completed with warnings: {assurances_output}")
+                logger.warning(f"Assurances component execution completed with warnings: {assurances_output}")
             
         except Exception as update_error:
             logger.warning(f"Failed to update state file or run components: {str(update_error)}")

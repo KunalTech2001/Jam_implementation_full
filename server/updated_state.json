@@ -253,245 +253,20 @@
   ],
   "beta": [
     {
-      "header_hash": "0x8d351d12980b1550cf38fe5bf0231fe3a41c0a77ad9e66aa611aec26994d4e8a",
-      "mmr": {
-        "count": 0,
-        "peaks": []
-      },
-      "reported": [],
-      "state_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
-      "timestamp": 1
-    },
-    {
-      "header_hash": "0xb9a07089b65517ade3874fc891cc6206dfe5e753ac3bfb8dbf2cf0fe514b2a98",
-      "mmr": {
-        "count": 0,
-        "peaks": []
-      },
-      "reported": [],
-      "state_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
-      "timestamp": 0
-    },
-    {
-      "header_hash": "0xb9a07089b65517ade3874fc891cc6206dfe5e753ac3bfb8dbf2cf0fe514b2a98",
-      "mmr": {
-        "count": 0,
-        "peaks": []
-      },
-      "reported": [],
-      "state_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
-      "timestamp": 0
-    },
-    {
-      "header_hash": "0xb9a07089b65517ade3874fc891cc6206dfe5e753ac3bfb8dbf2cf0fe514b2a98",
-      "mmr": {
-        "count": 0,
-        "peaks": []
-      },
-      "reported": [],
-      "state_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
-      "timestamp": 0
-    },
-    {
-      "header_hash": "0xb9a07089b65517ade3874fc891cc6206dfe5e753ac3bfb8dbf2cf0fe514b2a98",
-      "mmr": {
-        "count": 0,
-        "peaks": []
-      },
-      "reported": [],
-      "state_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
-      "timestamp": 0
-    },
-    {
-      "header_hash": "0xb9a07089b65517ade3874fc891cc6206dfe5e753ac3bfb8dbf2cf0fe514b2a98",
-      "mmr": {
-        "count": 0,
-        "peaks": []
-      },
-      "reported": [],
-      "state_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
-      "timestamp": 0
-    },
-    {
-      "header_hash": "0xb9a07089b65517ade3874fc891cc6206dfe5e753ac3bfb8dbf2cf0fe514b2a98",
-      "mmr": {
-        "count": 0,
-        "peaks": []
-      },
-      "reported": [],
-      "state_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
-      "timestamp": 0
-    },
-    {
-      "header_hash": "0xb9a07089b65517ade3874fc891cc6206dfe5e753ac3bfb8dbf2cf0fe514b2a98",
-      "mmr": {
-        "count": 0,
-        "peaks": []
-      },
-      "reported": [],
-      "state_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
-      "timestamp": 0
-    },
-    {
-      "header_hash": "0xb9a07089b65517ade3874fc891cc6206dfe5e753ac3bfb8dbf2cf0fe514b2a98",
-      "mmr": {
-        "count": 0,
-        "peaks": []
-      },
-      "reported": [],
-      "state_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
-      "timestamp": 0
-    },
-    {
-      "header_hash": "0xb9a07089b65517ade3874fc891cc6206dfe5e753ac3bfb8dbf2cf0fe514b2a98",
-      "mmr": {
-        "count": 0,
-        "peaks": []
-      },
-      "reported": [],
-      "state_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
-      "timestamp": 0
-    },
-    {
-      "header_hash": "0xb9a07089b65517ade3874fc891cc6206dfe5e753ac3bfb8dbf2cf0fe514b2a98",
-      "mmr": {
-        "count": 0,
-        "peaks": []
-      },
-      "reported": [],
-      "state_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
-      "timestamp": 0
-    },
-    {
-      "header_hash": "0xb9a07089b65517ade3874fc891cc6206dfe5e753ac3bfb8dbf2cf0fe514b2a98",
-      "mmr": {
-        "count": 0,
-        "peaks": []
-      },
-      "reported": [],
-      "state_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
-      "timestamp": 0
-    },
-    {
-      "header_hash": "0xb9a07089b65517ade3874fc891cc6206dfe5e753ac3bfb8dbf2cf0fe514b2a98",
-      "mmr": {
-        "count": 0,
-        "peaks": []
-      },
-      "reported": [],
-      "state_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
-      "timestamp": 0
-    },
-    {
-      "header_hash": "0xb9a07089b65517ade3874fc891cc6206dfe5e753ac3bfb8dbf2cf0fe514b2a98",
-      "mmr": {
-        "count": 0,
-        "peaks": []
-      },
-      "reported": [],
-      "state_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
-      "timestamp": 0
-    },
-    {
-      "header_hash": "0xb9a07089b65517ade3874fc891cc6206dfe5e753ac3bfb8dbf2cf0fe514b2a98",
-      "mmr": {
-        "count": 0,
-        "peaks": []
-      },
-      "reported": [],
-      "state_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
-      "timestamp": 0
-    },
-    {
-      "header_hash": "0xb9a07089b65517ade3874fc891cc6206dfe5e753ac3bfb8dbf2cf0fe514b2a98",
-      "mmr": {
-        "count": 0,
-        "peaks": []
-      },
-      "reported": [],
-      "state_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
-      "timestamp": 0
-    },
-    {
-      "header_hash": "0xb9a07089b65517ade3874fc891cc6206dfe5e753ac3bfb8dbf2cf0fe514b2a98",
-      "mmr": {
-        "count": 0,
-        "peaks": []
-      },
-      "reported": [],
-      "state_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
-      "timestamp": 0
-    },
-    {
-      "header_hash": "0x8517d716c84dbc9cbf259705fcce1dec0fbbd43c2635d11ebe9a8c169a08f3dd",
-      "mmr": {
-        "count": 1,
-        "peaks": [
-          "0x0000000000000000000000000000000000000000000000000000000000000000"
-        ]
-      },
-      "reported": [
-        {
-          "exports_root": "0xc74f0ee9bf2aa38e7433f887780cbed02df3820194a0d9396c403678dc287161",
-          "hash": null
-        }
-      ],
-      "state_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
-      "timestamp": 1757589035
-    },
-    {
-      "header_hash": "0xb9a07089b65517ade3874fc891cc6206dfe5e753ac3bfb8dbf2cf0fe514b2a98",
-      "mmr": {
-        "count": 0,
-        "peaks": []
-      },
-      "reported": [],
-      "state_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
-      "timestamp": 0
-    },
-    {
-      "header_hash": "0x8517d716c84dbc9cbf259705fcce1dec0fbbd43c2635d11ebe9a8c169a08f3dd",
-      "mmr": {
-        "count": 1,
-        "peaks": [
-          "0x0000000000000000000000000000000000000000000000000000000000000000"
-        ]
-      },
-      "reported": [
-        {
-          "exports_root": "0xc74f0ee9bf2aa38e7433f887780cbed02df3820194a0d9396c403678dc287161",
-          "hash": null
-        }
-      ],
-      "state_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
-      "timestamp": 1757589254
-    },
-    {
-      "header_hash": "0xb9a07089b65517ade3874fc891cc6206dfe5e753ac3bfb8dbf2cf0fe514b2a98",
-      "mmr": {
-        "count": 0,
-        "peaks": []
-      },
-      "reported": [],
-      "state_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
-      "timestamp": 0
-    },
-    {
-      "header_hash": "0x8517d716c84dbc9cbf259705fcce1dec0fbbd43c2635d11ebe9a8c169a08f3dd",
+      "header_hash": "0x241d129c6edc2114e6dfba7d556f7f7c66399b55ceec3078a53d44c752ba7e9a",
+      "state_root": "0x36657d44b4b6b962b95d04f6ca04a7ed08889464e6162af5a12b82787f9af23e",
       "mmr": {
         "peaks": [
-          "0x0000000000000000000000000000000000000000000000000000000000000000"
+          "0x7507515a48439dc58bc318c48a120b656136699f42bfd2bd45473becba53462d"
         ],
         "count": 1
       },
-      "state_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
       "reported": [
         {
-          "hash": null,
-          "exports_root": "0xc74f0ee9bf2aa38e7433f887780cbed02df3820194a0d9396c403678dc287161"
+          "hash": "0x3cc8d8c94e7b3ee01e678c63fd6b5db894fc807dff7fe10a11ab41e70194894d",
+          "exports_root": "0xc0edfe377d20b9f4ed7d9df9511ef904c87e24467364f0f7f75f20cfe90dd8fb"
         }
-      ],
-      "timestamp": 1757589492
+      ]
     },
     {
       "header_hash": "0xb9a07089b65517ade3874fc891cc6206dfe5e753ac3bfb8dbf2cf0fe514b2a98",
@@ -646,7 +421,7 @@
   "metadata": {
     "assurance_fields_updated": 3,
     "current_slot": 0,
-    "last_updated": "2025-09-11T16:48:13.182692",
+    "last_updated": "2025-09-12T12:16:37.976286",
     "updated_by": "assurances_component",
     "updated_from_original": "/Users/anish/Desktop/JAM-UPDATED/Jam_implementation_full/server/sample_data.json"
   },
