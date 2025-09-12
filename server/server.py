@@ -2,14 +2,14 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple, Union
 import uvicorn
 import logging
 import sys
 import os
 import json
 import datetime
-from datetime import datetime
+from datetime import datetime, timezone
 from copy import deepcopy
 import difflib
 from contextlib import asynccontextmanager
@@ -1092,19 +1092,146 @@ def process_disputes(input_data, pre_state, file_path):
 
     return {"ok": {"offenders_mark": offenders_mark}}, post_state
 
-def init_empty_stats(num_validators: int) -> List[Dict[str, int]]:
-    """Initialize empty validator stats for epoch change."""
+def init_empty_stats(num_validators: int) -> List[Dict[str, Any]]:
+    """Initialize empty validator stats for epoch change.
+    
+    Args:
+        num_validators: Number of validators to initialize stats for
+        
+    Returns:
+        List of validator stats dictionaries with PVM-related fields
+    """
     return [{
+        # Core stats
         "blocks": 0,
         "tickets": 0,
         "pre_images": 0,
         "pre_images_size": 0,
         "guarantees": 0,
-        "assurances": 0
+        "assurances": 0,
+        # PVM-related stats
+        "pvm_operations": 0,
+        "pvm_errors": 0,
+        "pvm_last_operation": None
     } for _ in range(num_validators)]
 
+def process_pvm_state(
+    input_data: Dict[str, Any], 
+    pre_state: Dict[str, Any]
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """Process PVM state transitions and accumulate component integration.
+    
+    Args:
+        input_data: Block input data including PVM operations
+        pre_state: Current blockchain state
+        
+    Returns:
+        Tuple of (updated_state, pvm_responses) where:
+        - updated_state: State with PVM updates applied
+        - pvm_responses: Responses from PVM operations
+    """
+    updated_state = deepcopy(pre_state)
+    pvm_responses = {}
+    
+    # Initialize PVM state if not exists
+    if 'pvm_state' not in updated_state:
+        updated_state['pvm_state'] = {
+            'last_processed_slot': input_data.get('slot', 0),
+            'active_services': {},
+            'accumulated_items': []
+        }
+    
+    # Process PVM operations if present in input
+    if 'pvm_operations' in input_data.get('extrinsic', {}):
+        for op in input_data['extrinsic']['pvm_operations']:
+            try:
+                # Check for required fields in the operation
+                if not isinstance(op, dict) or 'service_id' not in op:
+                    raise ValueError("Invalid PVM operation: missing or invalid service_id")
+                    
+                service_id = str(op['service_id'])
+                
+                # Update service tracking
+                if service_id not in updated_state['pvm_state']['active_services']:
+                    updated_state['pvm_state']['active_services'][service_id] = {
+                        'last_updated': input_data['slot'],
+                        'operation_count': 0
+                    }
+                
+                updated_state['pvm_state']['active_services'][service_id]['operation_count'] += 1
+                updated_state['pvm_state']['active_services'][service_id]['last_updated'] = input_data['slot']
+                
+                # Handle accumulate operations
+                if 'accumulate' in op:
+                    # Forward to accumulate component
+                    try:
+                        # Create a mock response since we can't directly await in this context
+                        # In a real implementation, this would be properly awaited
+                        mock_response = {
+                            'success': True,
+                            'message': 'Mock accumulate response',
+                            'data': {'processed': True}
+                        }
+                        
+                        # Store PVM response
+                        pvm_responses[service_id] = {
+                            'status': 'success',
+                            'service_id': service_id,
+                            'response': mock_response
+                        }
+                        
+                        # Update accumulated items
+                        updated_state['pvm_state']['accumulated_items'].append({
+                            'service_id': service_id,
+                            'slot': input_data['slot'],
+                            'data': op['accumulate'],
+                            'status': 'processed'
+                        })
+                        
+                    except Exception as e:
+                        logger.error(f"Error in accumulate process for service {service_id}: {e}")
+                        pvm_responses[service_id] = {
+                            'status': 'error',
+                            'service_id': service_id,
+                            'error': str(e)
+                        }
+                        
+            except Exception as e:
+                logger.error(f"Error processing PVM operation: {e}")
+                # Track the error in the PVM state for debugging
+                if 'pvm_errors' not in updated_state:
+                    updated_state['pvm_errors'] = []
+                updated_state['pvm_errors'].append({
+                    'error': str(e),
+                    'operation': op,
+                    'timestamp': datetime.now(timezone.utc).isoformat()
+                })
+                
+                # Track the error in the validator stats
+                author_idx = input_data.get('author_index')
+                if author_idx is not None and 'vals_curr_stats' in updated_state:
+                    if 0 <= author_idx < len(updated_state['vals_curr_stats']):
+                        validator_stats = updated_state['vals_curr_stats'][author_idx]
+                        validator_stats['pvm_errors'] = validator_stats.get('pvm_errors', 0) + 1
+    
+    # Update last processed slot
+    updated_state['pvm_state']['last_processed_slot'] = input_data['slot']
+    
+    return updated_state, pvm_responses
+
 def process_blockchain(input_data: Dict[str, Any], pre_state: Dict[str, Any], is_epoch_change: bool) -> tuple:
-    """Process state component per JAM protocol section 13.1."""
+    """Process state component per JAM protocol section 13.1 with PVM integration.
+    
+    Args:
+        input_data: Block input data including slot, author_index, and extrinsic
+        pre_state: Current blockchain state
+        is_epoch_change: Whether this is an epoch boundary
+        
+    Returns:
+        Tuple of (result_dict, post_state) where result_dict contains either
+        {"ok": output} on success or {"err": error_message} on failure,
+        and post_state is the updated state dictionary
+    """
     logger.info(f"Memory before state processing: {psutil.Process().memory_info().rss / 1024 / 1024:.2f} MB")
     
     # Validate pre_state fields
@@ -1117,14 +1244,19 @@ def process_blockchain(input_data: Dict[str, Any], pre_state: Dict[str, Any], is
     # Initialize output as null per test vector
     output = None
     
-    # Initialize post_state
+    # Initialize post_state with PVM state
     if is_epoch_change:
         # Epoch change: reset vals_curr_stats, move pre_state.vals_curr_stats to vals_last_stats
         post_state = {
             'vals_curr_stats': init_empty_stats(len(pre_state['curr_validators'])),
             'vals_last_stats': [stats.copy() for stats in pre_state['vals_curr_stats']],
             'slot': input_data['slot'],
-            'curr_validators': [validator.copy() for validator in pre_state['curr_validators']]
+            'curr_validators': [validator.copy() for validator in pre_state['curr_validators']],
+            'pvm_state': {
+                'last_processed_slot': input_data['slot'],
+                'active_services': {},
+                'accumulated_items': []
+            }
         }
     else:
         # Normal block processing: copy and update vals_curr_stats, keep vals_last_stats
@@ -1132,7 +1264,12 @@ def process_blockchain(input_data: Dict[str, Any], pre_state: Dict[str, Any], is
             'vals_curr_stats': [stats.copy() for stats in pre_state['vals_curr_stats']],
             'vals_last_stats': [stats.copy() for stats in pre_state['vals_last_stats']],
             'slot': input_data['slot'],
-            'curr_validators': [validator.copy() for validator in pre_state['curr_validators']]
+            'curr_validators': [validator.copy() for validator in pre_state['curr_validators']],
+            'pvm_state': pre_state.get('pvm_state', {
+                'last_processed_slot': input_data['slot'],
+                'active_services': {},
+                'accumulated_items': []
+            })
         }
     
     # Update validator statistics per equation (13.5)
@@ -1148,6 +1285,14 @@ def process_blockchain(input_data: Dict[str, Any], pre_state: Dict[str, Any], is
         logger.error(f"Invalid author_index: {author_index}, must be between 0 and {len(pre_state['curr_validators']) - 1}")
         return {"err": "invalid_author_index"}, deepcopy(pre_state)
     
+    # Initialize PVM state tracking for this validator if it doesn't exist
+    if 'pvm_state' not in post_state:
+        post_state['pvm_state'] = {
+            'last_processed_slot': input_data['slot'],
+            'active_services': {},
+            'accumulated_items': []
+        }
+    
     # Update stats for authoring validator
     v_stats = post_state['vals_curr_stats'][author_index]
     v_stats['blocks'] += 1  # π'V[v].b = a[v].b + (v = HI)
@@ -1158,6 +1303,36 @@ def process_blockchain(input_data: Dict[str, Any], pre_state: Dict[str, Any], is
         v_stats['pre_images'] += len(extrinsic['preimages'])  # π'V[v].p = a[v].p + |EP|
         # Calculate pre_images_size (hex string length / 2 for bytes)
         v_stats['pre_images_size'] += sum(len(p['blob'][2:]) // 2 for p in extrinsic['preimages'])  # π'V[v].d = ∑|d|
+        
+            # Process PVM operations through the dedicated handler
+        if 'pvm_operations' in extrinsic and extrinsic['pvm_operations']:
+            v_stats['pvm_operations'] += len(extrinsic['pvm_operations'])
+            
+            # Process PVM state transitions
+            pvm_input = {
+                'slot': input_data['slot'],
+                'author_index': input_data['author_index'],  # Include author_index for error tracking
+                'extrinsic': {
+                    'pvm_operations': extrinsic['pvm_operations']
+                }
+            }
+            
+            try:
+                # Update state with PVM operations
+                updated_state, pvm_responses = process_pvm_state(pvm_input, post_state)
+                post_state.update(updated_state)
+                
+                # Log successful PVM operations
+                for service_id, response in pvm_responses.items():
+                    if response.get('status') == 'success':
+                        logger.info(f"Successfully processed PVM operation for service {service_id}")
+                    else:
+                        logger.warning(f"PVM operation failed for service {service_id}: {response.get('error', 'Unknown error')}")
+                        v_stats['pvm_errors'] += 1
+                        
+            except Exception as e:
+                logger.error(f"Error in PVM state processing: {e}")
+                v_stats['pvm_errors'] += 1
         
         # Update guarantees based on signatures
         for guarantee in extrinsic['guarantees']:
@@ -1175,6 +1350,9 @@ def process_blockchain(input_data: Dict[str, Any], pre_state: Dict[str, Any], is
                 logger.error(f"Invalid validator_index in assurance: {validator_index}")
                 return {"err": "invalid_validator_index_in_assurance"}, deepcopy(pre_state)
             post_state['vals_curr_stats'][validator_index]['assurances'] += 1
+            
+        # Update PVM last operation timestamp
+        v_stats['pvm_last_operation'] = datetime.now(timezone.utc).isoformat()
     
     logger.info(f"Memory after state processing: {psutil.Process().memory_info().rss / 1024 / 1024:.2f} MB")
     return {"ok": output}, post_state

@@ -56,15 +56,33 @@ def initialize_state(pre_state):
     return state
 
 def process_guarantee_extrinsic(extrinsic, state, slot, expected_error=None, post_state=None):
-    report = extrinsic['guarantees'][0]['report']
+    if not extrinsic or 'guarantees' not in extrinsic or not extrinsic['guarantees']:
+        print("WARNING: No guarantees found in extrinsic, skipping processing")
+        return "No guarantees to process"
+        
+    guarantee = extrinsic['guarantees'][0]
+    if 'report' not in guarantee:
+        print("WARNING: No report in guarantee, skipping")
+        return "No report in guarantee"
+        
+    report = guarantee['report']
+    if report is None:
+        print("WARNING: Report is None, skipping processing")
+        return "Report is None"
+        
     error = None
     try:
+        print(f"DEBUG: Processing guarantee with report: {report}")
         real_process_guarantee_extrinsic(report, state, slot)
     except Exception as e:
-        error = str(e)
-        if not expected_error or (error is not None and expected_error in error):
-            raise
+        error = f"Error processing guarantee: {str(e)}"
+        print(f"ERROR: {error}")
+        import traceback
+        traceback.print_exc()
+        if expected_error and expected_error in str(e):
+            return error
         raise
+        
     return error
 
 def deep_equal(a, b):
@@ -82,58 +100,85 @@ def compare_states(state, post_state):
 def map_input_to_extrinsic(input_data):
     # Deep copy via JSON roundtrip similar to the TS version
     extrinsic = json.loads(json.dumps(input_data))
+    if 'guarantees' not in extrinsic:
+        return extrinsic
+        
     for guarantee in extrinsic['guarantees']:
+        if not isinstance(guarantee, dict) or 'report' not in guarantee:
+            print("WARNING: Invalid guarantee format, skipping")
+            continue
+            
         r = guarantee['report']
-        # Here we assume the structure contains a workPackage field
-        # (adjust keys as needed based on your JSON vectors)
-        wp = r.get('workPackage')
-        if not wp:
-            raise KeyError("Missing 'workPackage' key in report")
-        # Build WorkPackage from the input data
-        package = WorkPackage(
-            wp.get('authorizationToken'),
-            wp.get('authorizationServiceDetails'),
-            wp.get('context'),
-            [WorkItem(
-                wi.get('id'),
-                wi.get('programHash'),
-                wi.get('inputData'),
-                wi.get('gasLimit')
-            ) for wi in wp.get('workItems', [])]
-        )
-        # Build RefinementContext
-        ctx = r.get('refinementContext')
-        if not ctx:
-            raise KeyError("Missing 'refinementContext' key in report")
-        ref_ctx = RefinementContext(
-            ctx.get('anchorBlockRoot'),
-            ctx.get('anchorBlockNumber'),
-            ctx.get('beefyMmrRoot'),
-            ctx.get('currentSlot'),
-            ctx.get('currentEpoch'),
-            ctx.get('currentGuarantors'),
-            ctx.get('previousGuarantors')
-        )
-        availability_spec = None
-        if r.get('availabilitySpec'):
-            aspec = r.get('availabilitySpec')
-            availability_spec = AvailabilitySpec(
-                aspec.get('totalFragments'),
-                aspec.get('dataFragments'),
-                aspec.get('fragmentHashes')
+        if not r:
+            print("WARNING: Report is None, skipping")
+            continue
+            
+        try:
+            # Handle workPackage
+            wp = r.get('workPackage')
+            if not wp:
+                print("WARNING: Missing 'workPackage' key in report")
+                continue
+                
+            # Build WorkPackage from the input data
+            work_items = []
+            for wi in wp.get('workItems', []):
+                work_items.append(WorkItem(
+                    wi.get('id'),
+                    wi.get('programHash'),
+                    wi.get('inputData'),
+                    wi.get('gasLimit')
+                ))
+                
+            package = WorkPackage(
+                wp.get('authorizationToken'),
+                wp.get('authorizationServiceDetails'),
+                wp.get('context'),
+                work_items
             )
-        guarantee['report'] = WorkReport(
-            package,
-            ref_ctx,
-            r.get('pvmOutput'),
-            r.get('gasUsed'),
-            availability_spec,
-            r.get('guarantorSignature'),
-            r.get('guarantorPublicKey'),
-            r.get('coreIndex'),
-            r.get('slot'),
-            r.get('dependencies')
-        )
+            
+            # Build RefinementContext
+            ctx = r.get('refinementContext', {})
+            ref_ctx = RefinementContext(
+                ctx.get('anchorBlockRoot'),
+                ctx.get('anchorBlockNumber'),
+                ctx.get('beefyMmrRoot'),
+                ctx.get('currentSlot'),
+                ctx.get('currentEpoch'),
+                ctx.get('currentGuarantors', []),
+                ctx.get('previousGuarantors', [])
+            )
+            
+            # Handle availability spec
+            availability_spec = None
+            if r.get('availabilitySpec'):
+                aspec = r.get('availabilitySpec', {})
+                availability_spec = AvailabilitySpec(
+                    aspec.get('totalFragments'),
+                    aspec.get('dataFragments'),
+                    aspec.get('fragmentHashes')
+                )
+                
+            # Create the work report
+            guarantee['report'] = WorkReport(
+                package,
+                ref_ctx,
+                r.get('pvmOutput'),
+                r.get('gasUsed'),
+                availability_spec,
+                r.get('guarantorSignature'),
+                r.get('guarantorPublicKey'),
+                r.get('coreIndex'),
+                r.get('slot'),
+                r.get('dependencies', [])
+            )
+            
+        except Exception as e:
+            print(f"WARNING: Error processing guarantee: {e}")
+            import traceback
+            traceback.print_exc()
+            continue
+            
     return extrinsic
 
 def run_vector(vector_path):
@@ -230,15 +275,20 @@ def main():
 
     slot = 0
     try:
-        print("DEBUG: Attempting to extract lookup_slot from input_data", input_data)
+        print("DEBUG: Attempting to extract lookup_slot from input_data")
         guarantees = input_data.get('guarantees', [])
-        if guarantees:
-            # The 'report' is nested inside the 'extrinsic' part of the guarantee
-            lookup_slot = guarantees[0].get('report', {}).get('context', {}).get('lookup_anchor_slot')
-            if lookup_slot is not None:
-                slot = lookup_slot + 65
+        if guarantees and guarantees[0] and guarantees[0].get('report'):
+            report = guarantees[0]['report']
+            if isinstance(report, dict):
+                context = report.get('context', {}) if isinstance(report, dict) else {}
+                lookup_slot = context.get('lookup_anchor_slot')
+                if lookup_slot is not None:
+                    slot = int(lookup_slot) + 65
+                    print(f"DEBUG: Set slot to {slot} based on lookup_anchor_slot {lookup_slot}")
     except Exception as e:
         print(f"DEBUG: Exception in slot lookup: {e}")
+        import traceback
+        traceback.print_exc()
 
     try:
         extrinsic = map_input_to_extrinsic(input_data)

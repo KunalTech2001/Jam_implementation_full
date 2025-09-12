@@ -294,6 +294,66 @@
     },
     {
       "header_hash": "0xb9a07089b65517ade3874fc891cc6206dfe5e753ac3bfb8dbf2cf0fe514b2a98",
+      "mmr": {
+        "count": 0,
+        "peaks": []
+      },
+      "reported": [],
+      "state_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "timestamp": 0
+    },
+    {
+      "header_hash": "0xb9a07089b65517ade3874fc891cc6206dfe5e753ac3bfb8dbf2cf0fe514b2a98",
+      "mmr": {
+        "count": 0,
+        "peaks": []
+      },
+      "reported": [],
+      "state_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "timestamp": 0
+    },
+    {
+      "header_hash": "0xb9a07089b65517ade3874fc891cc6206dfe5e753ac3bfb8dbf2cf0fe514b2a98",
+      "mmr": {
+        "count": 0,
+        "peaks": []
+      },
+      "reported": [],
+      "state_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "timestamp": 0
+    },
+    {
+      "header_hash": "0xb9a07089b65517ade3874fc891cc6206dfe5e753ac3bfb8dbf2cf0fe514b2a98",
+      "mmr": {
+        "count": 0,
+        "peaks": []
+      },
+      "reported": [],
+      "state_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "timestamp": 0
+    },
+    {
+      "header_hash": "0xb9a07089b65517ade3874fc891cc6206dfe5e753ac3bfb8dbf2cf0fe514b2a98",
+      "mmr": {
+        "count": 0,
+        "peaks": []
+      },
+      "reported": [],
+      "state_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "timestamp": 0
+    },
+    {
+      "header_hash": "0xb9a07089b65517ade3874fc891cc6206dfe5e753ac3bfb8dbf2cf0fe514b2a98",
+      "mmr": {
+        "count": 0,
+        "peaks": []
+      },
+      "reported": [],
+      "state_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "timestamp": 0
+    },
+    {
+      "header_hash": "0xb9a07089b65517ade3874fc891cc6206dfe5e753ac3bfb8dbf2cf0fe514b2a98",
       "state_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
       "mmr": {
         "peaks": [],
@@ -353,68 +413,22 @@
   },
   "metadata": {
     "assurance_fields_updated": 3,
-    "current_slot": 0,
-    "last_updated": "2025-09-10T17:53:46.337729",
+    "current_slot": 12345,
+    "last_updated": "2025-09-12T17:34:50.946346",
     "updated_by": "assurances_component",
     "updated_from_original": "/Users/hatim/Projects/Jam_implementation_full/server/sample_data.json"
   },
   "offenders": [],
   "post_state": {
     "\u03c1": {},
-    "\u03c9": {
-      "64015b5ff6ab0296605ab28d396249bcf57aa99ca45cb3124b723936e65a9149": {
-        "report": {
-          "workPackage": {
-            "authorizationToken": "0x",
-            "authorizationServiceDetails": {
-              "f": "authorizeWork",
-              "h": "auth.service.local",
-              "u": "/authorize"
-            },
-            "context": "example-context",
-            "workItems": [
-              {
-                "id": "item-1",
-                "programHash": "0x00",
-                "inputData": "0x",
-                "gasLimit": 1000
-              }
-            ]
-          },
-          "refinementContext": {
-            "anchorBlockRoot": "0x0000000000000000000000000000000000000000000000000000000000000000",
-            "anchorBlockNumber": 69,
-            "beefyMmrRoot": "0x0000000000000000000000000000000000000000000000000000000000000000",
-            "currentSlot": 1,
-            "currentEpoch": 0,
-            "currentGuarantors": [
-              "zaki4eu4WYPaEHsryY/dnRfk8ofpre3mpAsySyAYk50="
-            ],
-            "previousGuarantors": []
-          },
-          "pvmOutput": "0x",
-          "gasUsed": 0,
-          "availabilitySpec": null,
-          "coreIndex": 0,
-          "slot": 69,
-          "dependencies": [],
-          "guarantorSignature": "rq55ej/PFHEtQrvEbtRRgSvMsjfBhxoqeTwlyw5sYLsjQHgktqCsGkUXyAd0ck5P95EwlcHAyNritK0rdKMPDg==",
-          "guarantorPublicKey": "zaki4eu4WYPaEHsryY/dnRfk8ofpre3mpAsySyAYk50="
-        },
-        "status": "ready"
-      }
-    },
+    "\u03c9": {},
     "\u03be": {},
     "\u03c8_B": {},
     "\u03c8_O": {},
     "globalState": {
       "accounts": {},
       "coreStatus": {},
-      "serviceRegistry": {
-        "/authorize": {
-          "codeHash": "0x00"
-        }
-      }
+      "serviceRegistry": {}
     }
   },
   "pre_state": {
@@ -489,6 +503,231 @@
     ],
     "wonky": []
   },
+  "ready_queue": [
+    [
+      {
+        "dependencies": [],
+        "report": {
+          "package_spec": {
+            "hash": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          "results": [
+            {
+              "result": {
+                "ok": "0x68656c6c6f"
+              },
+              "service_id": 1
+            }
+          ]
+        }
+      },
+      {
+        "dependencies": [],
+        "report": {
+          "package_spec": {
+            "hash": "0011111111111111111111111111111111111111111111111111111111111111"
+          },
+          "results": [
+            {
+              "result": {
+                "ok": "0x010203"
+              },
+              "service_id": 1
+            }
+          ]
+        }
+      },
+      {
+        "dependencies": [],
+        "report": {
+          "package_spec": {
+            "hash": "2200000000000000000000000000000000000000000000000000000000000000"
+          },
+          "results": [
+            {
+              "result": {
+                "ok": "0xdeadbeef"
+              },
+              "service_id": 2
+            }
+          ]
+        }
+      },
+      {
+        "dependencies": [],
+        "report": {
+          "package_spec": {
+            "hash": "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
+          },
+          "results": [
+            {
+              "result": {
+                "ok": "0x0102030405060708090a0b0c0d0e0f10"
+              },
+              "service_id": 1
+            }
+          ]
+        }
+      },
+      {
+        "dependencies": [],
+        "report": {
+          "package_spec": {
+            "hash": "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
+          },
+          "results": [
+            {
+              "result": {
+                "ok": "0x0102030405060708090a0b0c0d0e0f10"
+              },
+              "service_id": 1
+            }
+          ]
+        }
+      },
+      {
+        "dependencies": [],
+        "report": {
+          "package_spec": {
+            "hash": "0011111111111111111111111111111111111111111111111111111111111111"
+          },
+          "results": [
+            {
+              "result": {
+                "ok": "0x010203"
+              },
+              "service_id": 1
+            }
+          ]
+        }
+      },
+      {
+        "dependencies": [],
+        "report": {
+          "package_spec": {
+            "hash": "2200000000000000000000000000000000000000000000000000000000000000"
+          },
+          "results": [
+            {
+              "result": {
+                "ok": "0xdeadbeef"
+              },
+              "service_id": 2
+            }
+          ]
+        }
+      },
+      {
+        "dependencies": [],
+        "report": {
+          "package_spec": {
+            "hash": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          "results": [
+            {
+              "result": {
+                "ok": "0x010203"
+              },
+              "service_id": 1
+            }
+          ]
+        }
+      },
+      {
+        "dependencies": [],
+        "report": {
+          "package_spec": {
+            "hash": "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
+          },
+          "results": [
+            {
+              "result": {
+                "ok": "0x0102030405060708090a0b0c0d0e0f10"
+              },
+              "service_id": 1
+            }
+          ]
+        }
+      },
+      {
+        "dependencies": [],
+        "report": {
+          "package_spec": {
+            "hash": "0011111111111111111111111111111111111111111111111111111111111111"
+          },
+          "results": [
+            {
+              "result": {
+                "ok": "0x010203"
+              },
+              "service_id": 1
+            }
+          ]
+        }
+      },
+      {
+        "dependencies": [],
+        "report": {
+          "package_spec": {
+            "hash": "2200000000000000000000000000000000000000000000000000000000000000"
+          },
+          "results": [
+            {
+              "result": {
+                "ok": "0xdeadbeef"
+              },
+              "service_id": 2
+            }
+          ]
+        }
+      },
+      {
+        "report": {
+          "results": [
+            {
+              "service_id": 1,
+              "result": {
+                "ok": "0x0102030405060708090a0b0c0d0e0f10"
+              }
+            }
+          ],
+          "package_spec": {
+            "hash": "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
+          }
+        },
+        "dependencies": []
+      }
+    ],
+    [],
+    [],
+    [],
+    [],
+    [
+      {
+        "dependencies": [],
+        "report": {
+          "core_index": 5,
+          "package_spec": {
+            "hash": "3300000000000000000000000000000000000000000000000000000000000000"
+          },
+          "results": [
+            {
+              "result": {
+                "ok": "0xff00ff"
+              },
+              "service_id": 3
+            }
+          ]
+        }
+      }
+    ],
+    [],
+    [],
+    [],
+    [],
+    [],
+    []
+  ],
   "recent_blocks": {
     "history": [
       {
@@ -578,6 +817,7 @@
     null
   ],
   "services_statistics": [],
+  "slot": 123,
   "statistics": [],
   "vals_curr_stats": [
     {
@@ -678,215 +918,5 @@
       "pre_images_size": 365,
       "tickets": 10892
     }
-  ],
-  "slot": 124,
-  "ready_queue": [
-    [
-      {
-        "report": {
-          "results": [
-            {
-              "service_id": 1,
-              "result": {
-                "ok": "0x68656c6c6f"
-              }
-            }
-          ],
-          "package_spec": {
-            "hash": "0000000000000000000000000000000000000000000000000000000000000000"
-          }
-        },
-        "dependencies": []
-      },
-      {
-        "report": {
-          "results": [
-            {
-              "service_id": 1,
-              "result": {
-                "ok": "0x010203"
-              }
-            }
-          ],
-          "package_spec": {
-            "hash": "0011111111111111111111111111111111111111111111111111111111111111"
-          }
-        },
-        "dependencies": []
-      },
-      {
-        "report": {
-          "results": [
-            {
-              "service_id": 2,
-              "result": {
-                "ok": "0xdeadbeef"
-              }
-            }
-          ],
-          "package_spec": {
-            "hash": "2200000000000000000000000000000000000000000000000000000000000000"
-          }
-        },
-        "dependencies": []
-      },
-      {
-        "report": {
-          "results": [
-            {
-              "service_id": 1,
-              "result": {
-                "ok": "0x0102030405060708090a0b0c0d0e0f10"
-              }
-            }
-          ],
-          "package_spec": {
-            "hash": "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
-          }
-        },
-        "dependencies": []
-      },
-      {
-        "report": {
-          "results": [
-            {
-              "service_id": 1,
-              "result": {
-                "ok": "0x0102030405060708090a0b0c0d0e0f10"
-              }
-            }
-          ],
-          "package_spec": {
-            "hash": "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
-          }
-        },
-        "dependencies": []
-      },
-      {
-        "report": {
-          "results": [
-            {
-              "service_id": 1,
-              "result": {
-                "ok": "0x010203"
-              }
-            }
-          ],
-          "package_spec": {
-            "hash": "0011111111111111111111111111111111111111111111111111111111111111"
-          }
-        },
-        "dependencies": []
-      },
-      {
-        "report": {
-          "results": [
-            {
-              "service_id": 2,
-              "result": {
-                "ok": "0xdeadbeef"
-              }
-            }
-          ],
-          "package_spec": {
-            "hash": "2200000000000000000000000000000000000000000000000000000000000000"
-          }
-        },
-        "dependencies": []
-      },
-      {
-        "report": {
-          "package_spec": {
-            "hash": "0000000000000000000000000000000000000000000000000000000000000000"
-          },
-          "results": [
-            {
-              "service_id": 1,
-              "result": {
-                "ok": "0x010203"
-              }
-            }
-          ]
-        },
-        "dependencies": []
-      },
-      {
-        "report": {
-          "results": [
-            {
-              "service_id": 1,
-              "result": {
-                "ok": "0x0102030405060708090a0b0c0d0e0f10"
-              }
-            }
-          ],
-          "package_spec": {
-            "hash": "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
-          }
-        },
-        "dependencies": []
-      },
-      {
-        "report": {
-          "results": [
-            {
-              "service_id": 1,
-              "result": {
-                "ok": "0x010203"
-              }
-            }
-          ],
-          "package_spec": {
-            "hash": "0011111111111111111111111111111111111111111111111111111111111111"
-          }
-        },
-        "dependencies": []
-      },
-      {
-        "report": {
-          "results": [
-            {
-              "service_id": 2,
-              "result": {
-                "ok": "0xdeadbeef"
-              }
-            }
-          ],
-          "package_spec": {
-            "hash": "2200000000000000000000000000000000000000000000000000000000000000"
-          }
-        },
-        "dependencies": []
-      }
-    ],
-    [],
-    [],
-    [],
-    [],
-    [
-      {
-        "report": {
-          "core_index": 5,
-          "results": [
-            {
-              "service_id": 3,
-              "result": {
-                "ok": "0xff00ff"
-              }
-            }
-          ],
-          "package_spec": {
-            "hash": "3300000000000000000000000000000000000000000000000000000000000000"
-          }
-        },
-        "dependencies": []
-      }
-    ],
-    [],
-    [],
-    [],
-    [],
-    [],
-    []
   ]
 }
