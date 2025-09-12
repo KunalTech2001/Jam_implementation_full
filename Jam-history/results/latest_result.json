@@ -1,70 +1,20 @@
 {
-  "input": {
-    "header_hash": "0x37fe33f96de26f26d8c256e3b5baed0fbc28e1824f1844e0e1417b5342863740",
-    "parent_state_root": "0xe192165a13296d1b75224380e38a330f0597ea05e753c9f751059bc2b7ed9278",
-    "accumulate_root": "0x29cd82f646e56df4570fe6cc70d62225becab7138788e1728ed2cdde59202145",
-    "work_packages": [
-      {
-        "exports_root": "0x3d16ed66bae11acbdccc7015b4ee5c1bf87c864a7c930f78f59368280551f60d",
-        "hash": "0x303026af983b91393c6b31e972263759f72c5e7656c00b267e9b61292252c125"
-      }
-    ]
-  },
-  "pre_state": {
-    "beta": [
-      {
-        "header_hash": "0x7ea9180615fb57dd21c84793bf2eeee78a29c6193be0bbdaf03c01bd2532b914",
-        "state_root": "0xe192165a13296d1b75224380e38a330f0597ea05e753c9f751059bc2b7ed9278",
-        "mmr": {
-          "peaks": [
-            "0x2bf25e156a174f179a3c6223d6193d26a9de54d8e754e540050145bc5efe0493"
-          ],
-          "count": 1
-        },
-        "reported": [
-          {
-            "hash": "0x22f6c9658e97a10aab5054000140a3355aa61c2a42d9de904ef9e8533ce4a0f2",
-            "exports_root": "0xa50ff479bf2aa38e7433f887780cbed02df3820194a0d9396c403678dc287161"
-          }
-        ]
-      }
-    ]
-  },
-  "generated_post_state": {
-    "beta": [
-      {
-        "header_hash": "0x7ea9180615fb57dd21c84793bf2eeee78a29c6193be0bbdaf03c01bd2532b914",
-        "state_root": "0xe192165a13296d1b75224380e38a330f0597ea05e753c9f751059bc2b7ed9278",
-        "mmr": {
-          "peaks": [
-            "0x2bf25e156a174f179a3c6223d6193d26a9de54d8e754e540050145bc5efe0493"
-          ],
-          "count": 1
-        },
-        "reported": [
-          {
-            "hash": "0x22f6c9658e97a10aab5054000140a3355aa61c2a42d9de904ef9e8533ce4a0f2",
-            "exports_root": "0xa50ff479bf2aa38e7433f887780cbed02df3820194a0d9396c403678dc287161"
-          }
-        ]
+  "beta": [
+    {
+      "header_hash": "0x241d129c6edc2114e6dfba7d556f7f7c66399b55ceec3078a53d44c752ba7e9a",
+      "state_root": "0x36657d44b4b6b962b95d04f6ca04a7ed08889464e6162af5a12b82787f9af23e",
+      "mmr": {
+        "peaks": [
+          "0x7507515a48439dc58bc318c48a120b656136699f42bfd2bd45473becba53462d"
+        ],
+        "count": 1
       },
-      {
-        "header_hash": "0x37fe33f96de26f26d8c256e3b5baed0fbc28e1824f1844e0e1417b5342863740",
-        "state_root": "0x596591c82bef94030bb5b3a02c44e2939d1e4a428dd90517ea4f1172f267dbb6",
-        "mmr": {
-          "peaks": [
-            "0x576d4e3f92369d391fa545799c745241b33bf866138aa94f19c189cffde0ed32"
-          ],
-          "count": 2
-        },
-        "reported": [
-          {
-            "hash": "0x303026af983b91393c6b31e972263759f72c5e7656c00b267e9b61292252c125",
-            "exports_root": "0x3d16ed66bae11acbdccc7015b4ee5c1bf87c864a7c930f78f59368280551f60d"
-          }
-        ]
-      }
-    ]
-  },
-  "verified": true
+      "reported": [
+        {
+          "hash": "0x3cc8d8c94e7b3ee01e678c63fd6b5db894fc807dff7fe10a11ab41e70194894d",
+          "exports_root": "0xc0edfe377d20b9f4ed7d9df9511ef904c87e24467364f0f7f75f20cfe90dd8fb"
+        }
+      ]
+    }
+  ]
 }

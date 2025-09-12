@@ -1,127 +1,195 @@
 import json
+import os
+import copy
 from pathlib import Path
-from typing import Dict, Any, Optional
-from jam_types import State, BetaBlock, MMR, Reported
+from typing import Dict, Any, Optional, List, Union, Tuple
+from jam_types import State, BetaBlock, MMR, Reported, Input
 from history_stf import keccak256
 
-def load_updated_state(file_path: str) -> dict:
+def extract_input_from_payload(payload: Dict[str, Any]) -> Tuple[Dict[str, Any], List[Dict]]:
     """
-    Load and parse the updated_state.json file, extracting the required fields
-    for jam_history input and pre_state.
+    Extract input data from the curl payload and work packages.
     
     Args:
-        file_path: Path to the updated_state.json file
+        payload: The parsed JSON payload from the curl command
         
     Returns:
-        dict: Dictionary containing 'input' and 'pre_state' keys
+        tuple: (input_data, work_packages) where input_data is a dictionary containing input data
+               and work_packages is a list of work packages from the extrinsic
     """
-    # Default hardcoded values
-    default_input = {
-        'header_hash': '0x47ga43f96de26f26d8c256e3b5baed0ead28e1824f1844e0e1417b5342863740',
-        'parent_state_root': '0x18a801a3e6e660fcb31214ccaed62b0d43df9d5e91c31609cf2acf5844d7f625',
-        'accumulate_root': '0xa820b97ddd6acc0f6eb66e095524038675a4e4067adc10ec39939eaefc47d842',
-        'work_packages': [
+    if not payload or 'block' not in payload:
+        return {}, []
+        
+    header = payload['block'].get('header', {})
+    
+    # Extract work packages from header or extrinsic
+    work_packages = header.get('work_packages', [])
+    if not work_packages and 'extrinsic' in payload['block']:
+        work_packages = [
             {
-                'hash': '0x303026af983b91393c6b31e972263759f72c5e7656c00b267e9b61292252c125',
-                'exports_root': '0x3d26ea66bae21acbdccc7015b4ee5c1bf87c864a7c930f78f59368280551f60d'
+                'hash': wp['report']['workPackage']['hash'] if 'hash' in wp['report']['workPackage'] else None,
+                'exports_root': wp['report'].get('package_spec', {}).get('exports_root')
             }
+            for wp in payload['block']['extrinsic'].get('guarantees', [])
+            if wp.get('report', {}).get('workPackage')
         ]
+    
+    input_data = {
+        'header_hash': header.get('header_hash'),
+        'parent_state_root': header.get('parent_state_root'),
+        'accumulate_root': header.get('accumulate_root'),
+        'work_packages': work_packages
+    }
+    
+    return input_data, work_packages
+
+def load_updated_state(file_path: Union[str, Dict[str, Any]]) -> dict:
+    """
+    Load and parse the updated_state.json file or process the provided state data,
+    extracting the required fields for jam_history input and pre_state.
+    
+    Args:
+        file_path: Path to the updated_state.json file or the state data dict
+        
+    Returns:
+        dict: Dictionary containing 'input' and 'pre_state' keys with beta state
+    """
+    # Default empty state
+    state_data = {}
+    
+    if isinstance(file_path, dict):
+        state_data = file_path
+    else:
+        try:
+            with open(file_path, 'r') as f:
+                state_data = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            state_data = {}
+    
+    # Initialize beta state if not exists
+    if 'beta' not in state_data:
+        state_data['beta'] = []
+    
+    # Get the latest beta block or create a default one
+    latest_beta = state_data['beta'][-1] if state_data.get('beta') else {
+        'header_hash': '0x' + '0' * 64,
+        'mmr': {'peaks': []},
+        'state_root': '0x' + '0' * 64,
+        'reported': []
+    }
+    
+    # Prepare default input based on latest beta block
+    default_input = {
+        'header_hash': latest_beta.get('header_hash', '0x' + '0' * 64),
+        'parent_state_root': latest_beta.get('state_root', '0x' + '0' * 64),
+        'accumulate_root': '0x' + '0' * 64,
+        'work_packages': latest_beta.get('reported', [])
     }
     
     # Initialize beta_blocks as empty list
+    beta_blocks = []
     
-    try:
-        with open(file_path, 'r') as f:
-            state_data = json.load(f)
-            
-        # Get the most recent block from recent_blocks if available
-        recent_blocks = state_data.get('recent_blocks', {}).get('history', [])
+    # If file_path is already a dict (from payload), use it directly
+    if isinstance(file_path, dict):
+        state_data = file_path
+    else:
+        # Otherwise, try to read from file
+        try:
+            with open(file_path, 'r') as f:
+                state_data = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            print(f"Error loading state file: {e}")
+            state_data = {}
+    
+    # Initialize with default input values
+    input_data = default_input.copy()
+    
+    # Try to get input data from different possible locations
+    if 'input' in state_data:
+        # If input is directly in state_data
+        input_data.update(state_data['input'])
+    elif 'block' in state_data and 'header' in state_data['block']:
+        # If we have a block header in the payload
+        header = state_data['block']['header']
+        input_data.update({
+            'header_hash': header.get('header_hash', input_data['header_hash']),
+            'parent_state_root': header.get('parent_state_root', input_data['parent_state_root']),
+            'accumulate_root': header.get('accumulate_root', input_data['accumulate_root']),
+            'work_packages': header.get('work_packages', input_data['work_packages'])
+        })
         
-        # Initialize with default input values
-        input_data = default_input.copy()
-        
-        # Override with values from recent_blocks if available
-        if recent_blocks:
-            latest_block = recent_blocks[-1]
-            if 'header_hash' in latest_block:
-                input_data['header_hash'] = latest_block['header_hash']
-            if 'state_root' in latest_block:
-                input_data['parent_state_root'] = latest_block['state_root']
-            if 'beefy_root' in latest_block:
-                input_data['accumulate_root'] = latest_block['beefy_root']
-            if 'reported' in latest_block:
-                input_data['work_packages'] = latest_block['reported']
-        
-        # Initialize beta_blocks as empty list
-        beta_blocks = []
-        
-        # Try to get beta blocks from pre_state first
-        if 'pre_state' in state_data and 'beta' in state_data['pre_state'] and state_data['pre_state']['beta']:
+        # Initialize beta_blocks from pre_state if available
+        if 'pre_state' in state_data and 'beta' in state_data['pre_state']:
             beta_blocks = state_data['pre_state']['beta']
-        # If no pre_state.beta, try to convert recent_blocks to beta format
-        elif recent_blocks:
-            # Convert recent_blocks to beta blocks format if no pre_state.beta exists
-            beta_blocks = []
-            for block in recent_blocks:
-                # Create a simple MMR with a single peak for each block
-                mmr_peaks = []
-                if block.get('header_hash') and block.get('state_root'):
-                    # Create a hash from header_hash and state_root for the MMR peak
-                    # Remove '0x' prefix if present and convert to bytes
-                    header_hash = block['header_hash'][2:] if block['header_hash'].startswith('0x') else block['header_hash']
-                    state_root = block['state_root'][2:] if block['state_root'].startswith('0x') else block['state_root']
-                    mmr_input = bytes.fromhex(header_hash + state_root)
-                    mmr_peaks.append(keccak256(mmr_input))
-                
-                beta_block = {
-                    'header_hash': block.get('header_hash', '0x' + '00' * 32),
-                    'state_root': block.get('state_root', '0x' + '00' * 32),
-                    'mmr': {
-                        'peaks': mmr_peaks,
-                        'count': len(mmr_peaks)
-                    },
-                    'reported': block.get('reported', [])
-                }
-                beta_blocks.append(beta_block)
         
-        return {
-            'input': input_data,
-            'pre_state': {
-                'beta': beta_blocks
-            }
-        }
+        # If no beta blocks found, try to create from block header if available
+        if not beta_blocks and 'block' in state_data and 'header' in state_data['block']:
+            header = state_data['block']['header']
+            mmr_peaks = []
+            if 'header_hash' in header and 'parent_state_root' in header:
+                # Create a hash from header_hash and parent_state_root for the MMR peak
+                header_hash = header['header_hash'][2:] if header['header_hash'].startswith('0x') else header['header_hash']
+                state_root = header['parent_state_root'][2:] if header['parent_state_root'].startswith('0x') else header['parent_state_root']
+                mmr_input = bytes.fromhex(header_hash + state_root)
+                mmr_peaks = [keccak256(mmr_input)]
+            
+            beta_blocks = [{
+                'header_hash': header.get('header_hash', '0x' + '00' * 32),
+                'state_root': header.get('parent_state_root', '0x' + '00' * 32),
+                'mmr': {
+                    'peaks': mmr_peaks,
+                    'count': len(mmr_peaks)
+                },
+                'reported': header.get('work_packages', [])
+            }]
         
-    except Exception as e:
-        print(f"Error loading updated state: {e}")
-        # Return empty beta blocks on error
-        return {
-            'input': default_input,
-            'pre_state': {
-                'beta': []
-            }
+    return {
+        'input': input_data,
+        'pre_state': {
+            'beta': beta_blocks
         }
+    }
 
-def save_updated_state(file_path: str, state_data: dict) -> bool:
+def save_updated_state(file_path: str, state_data: dict, new_beta_block: Optional[Dict] = None) -> bool:
     """
-    Save the current state to the updated_state.json file.
+    Save the current state to the updated_state.json file and update beta state if provided.
     
     Args:
         file_path: Path to save the updated_state.json file
         state_data: Dictionary containing the complete state to save
+        new_beta_block: Optional new beta block to append to the beta list
         
     Returns:
         True if successful, False otherwise
     """
     try:
-        # Create parent directory if it doesn't exist
-        file_path = Path(file_path)
-        file_path.parent.mkdir(parents=True, exist_ok=True)
+        # Load existing state if file exists
+        existing_state = {}
+        if os.path.exists(file_path):
+            with open(file_path, 'r') as f:
+                existing_state = json.load(f)
         
-        # Save the complete new state, replacing any existing file
+        # Initialize beta list if it doesn't exist
+        if 'beta' not in existing_state:
+            existing_state['beta'] = []
+        
+        # Add new beta block if provided
+        if new_beta_block:
+            existing_state['beta'].append(new_beta_block)
+        
+        # Update other state data
+        for key, value in state_data.items():
+            if key != 'beta':  # Don't overwrite beta with empty list
+                existing_state[key] = value
+        
+        # Create directory if it doesn't exist
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        
+        # Write the updated state to file
         with open(file_path, 'w') as f:
-            json.dump(state_data, f, indent=2)
+            json.dump(existing_state, f, indent=2)
+            
         return True
-        
     except Exception as e:
         print(f"Error saving updated state: {e}")
         return False
