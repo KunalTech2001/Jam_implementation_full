@@ -1,9 +1,7 @@
-#!/usr/bin/env python3
+
 """
 Main entry point for the jam-preimages component.
 
-This script processes preimages and updates the state accordingly.
-It can be run directly or imported as a module.
 """
 import os
 import sys

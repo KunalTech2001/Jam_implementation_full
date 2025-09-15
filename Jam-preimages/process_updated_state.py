@@ -404,51 +404,43 @@ def main() -> None:
             "verified": True
         }
         
-        # Load the existing state again to ensure we have the latest version
-        existing_state = load_state_from_updated_state(updated_state_path)
+        # Merge the post_state with the existing state data
+        # First, create a deep copy of the original state to avoid modifying it directly
+        merged_state = json.loads(json.dumps(state_data))
         
-        # If the state file is empty or doesn't exist, use the post_state as is
-        if not existing_state:
-            merged_state = post_state
-        else:
-            # Create a deep copy of the existing state to avoid modifying it directly
-            merged_state = json.loads(json.dumps(existing_state))
+        # Update the accounts in the merged state with the new preimages data
+        if 'accounts' not in merged_state:
+            merged_state['accounts'] = {}
             
-            # Initialize accounts list if it doesn't exist
-            if 'accounts' not in merged_state:
-                merged_state['accounts'] = []
-                
-            # Merge preimages data
-            for account in post_state.get('accounts', []):
-                # Check if account already exists
-                existing_account = next(
-                    (acc for acc in merged_state['accounts'] 
-                     if acc.get('id') == account.get('id')), 
-                    None
-                )
-                
-                if existing_account:
-                    # Update existing account
-                    if 'data' not in existing_account:
-                        existing_account['data'] = {}
+        # Update each account in the post_state
+        if isinstance(post_state, dict) and 'accounts' in post_state:
+            for account in post_state['accounts']:
+                if 'id' in account and 'data' in account:
+                    account_id = account['id']
+                    # If account doesn't exist, create it
+                    if account_id not in merged_state['accounts']:
+                        merged_state['accounts'][account_id] = {}
+                    # Update the account data with preimages and lookup_meta
+                    if 'data' not in merged_state['accounts'][account_id]:
+                        merged_state['accounts'][account_id]['data'] = {}
                     
-                    # Update preimages
-                    if 'preimages' in account.get('data', {}):
-                        existing_account['data']['preimages'] = account['data']['preimages']
+                    # Update preimages if they exist in the post_state
+                    if 'preimages' in account['data']:
+                        if 'preimages' not in merged_state['accounts'][account_id]['data']:
+                            merged_state['accounts'][account_id]['data']['preimages'] = []
+                        # Replace existing preimages for this account
+                        merged_state['accounts'][account_id]['data']['preimages'] = account['data']['preimages']
                     
-                    # Update lookup_meta
-                    if 'lookup_meta' in account.get('data', {}):
-                        existing_account['data']['lookup_meta'] = account['data']['lookup_meta']
-                else:
-                    # Add new account
-                    merged_state['accounts'].append(account)
-            
-            # Ensure statistics exist
-            if 'statistics' not in merged_state:
-                merged_state['statistics'] = []
-            
-            # Merge statistics (append new statistics to existing ones)
-            merged_state['statistics'].extend(post_state.get('statistics', []))
+                    # Update lookup_meta if it exists in the post_state
+                    if 'lookup_meta' in account['data']:
+                        if 'lookup_meta' not in merged_state['accounts'][account_id]['data']:
+                            merged_state['accounts'][account_id]['data']['lookup_meta'] = []
+                        # Replace existing lookup_meta for this account
+                        merged_state['accounts'][account_id]['data']['lookup_meta'] = account['data']['lookup_meta']
+        
+        # Update statistics if they exist in post_state
+        if 'statistics' in post_state:
+            merged_state['statistics'] = post_state['statistics']
         
         # Save the merged state back to updated_state.json
         with open(updated_state_path, 'w') as f:

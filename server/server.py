@@ -1158,14 +1158,7 @@ def process_disputes(input_data, pre_state, file_path):
     return {"ok": {"offenders_mark": offenders_mark}}, post_state
 
 def init_empty_stats(num_validators: int) -> List[Dict[str, Any]]:
-    """Initialize empty validator stats for epoch change.
-    
-    Args:
-        num_validators: Number of validators to initialize stats for
-        
-    Returns:
-        List of validator stats dictionaries with PVM-related fields
-    """
+
     return [{
         # Core stats
         "blocks": 0,
@@ -1184,17 +1177,7 @@ def process_pvm_state(
     input_data: Dict[str, Any], 
     pre_state: Dict[str, Any]
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-    """Process PVM state transitions and accumulate component integration.
     
-    Args:
-        input_data: Block input data including PVM operations
-        pre_state: Current blockchain state
-        
-    Returns:
-        Tuple of (updated_state, pvm_responses) where:
-        - updated_state: State with PVM updates applied
-        - pvm_responses: Responses from PVM operations
-    """
     updated_state = deepcopy(pre_state)
     pvm_responses = {}
     
@@ -1285,18 +1268,7 @@ def process_pvm_state(
     return updated_state, pvm_responses
 
 def process_blockchain(input_data: Dict[str, Any], pre_state: Dict[str, Any], is_epoch_change: bool) -> tuple:
-    """Process state component per JAM protocol section 13.1 with PVM integration.
     
-    Args:
-        input_data: Block input data including slot, author_index, and extrinsic
-        pre_state: Current blockchain state
-        is_epoch_change: Whether this is an epoch boundary
-        
-    Returns:
-        Tuple of (result_dict, post_state) where result_dict contains either
-        {"ok": output} on success or {"err": error_message} on failure,
-        and post_state is the updated state dictionary
-    """
     logger.info(f"Memory before state processing: {psutil.Process().memory_info().rss / 1024 / 1024:.2f} MB")
     
     # Validate pre_state fields
@@ -1492,15 +1464,7 @@ async def health_check():
 
 @app.post("/authorize", response_model=AuthorizationResponse)
 async def authorize(request: AuthorizationRequest):
-    """
-    Handle authorization requests.
     
-    Args:
-        request: Authorization request containing public key, signature, nonce, and payload
-        
-    Returns:
-        Authorization response with success status and updated state
-    """
     try:
         # Verify the signature
         try:
