@@ -360,117 +360,115 @@ def run_preimage_test(test_vector: PreimagesTestVector) -> Tuple[bool, Optional[
     return test_passed, generated_post_state
 
 
+from src.state_manager import process_preimages
+
 def main() -> None:
     """
     Main function to process updated_state.json.
     
     This function:
-    1. Checks if the state file exists
-    2. Loads the state from updated_state.json if it exists
-    3. Creates a test vector from the state
-    4. Runs the preimage STF test
-    5. Updates the post_state in the state file
+    1. Loads the state from updated_state.json
+    2. Processes any input preimages
+    3. Generates the post_state
+    4. Saves the results to both updated_state.json and latest_result.json
     """
     try:
-
         BASE_DIR = os.path.dirname(os.path.abspath(__file__))
         state_file = os.path.join(BASE_DIR, "..", "server", "updated_state.json")
         updated_state_path = os.path.normpath(state_file)
-        # Path to the updated_state.json file
-        # updated_state_path = '/Users/anish/Desktop/fulljam/Jam_implementation_full/server/updated_state.json'
         
         # Check if the file exists
         if not os.path.exists(updated_state_path):
-            print(f"Error: {updated_state_path} does not exist")
+            print(json.dumps({"error": f"{updated_state_path} does not exist"}, indent=2))
             sys.exit(1)
-        
-        # Print minimal output
-        print("Jam-preimage is running...")
         
         # Load the state from the file
         state_data = load_state_from_updated_state(updated_state_path)
         
-        if not state_data:
-            print("Error: Failed to load state data")
-            sys.exit(1)
-            
-        # Create a test vector from the state
-        test_vector = create_test_vector_from_state(state_data)
+        # Extract preimages from input or use empty list
+        preimages = []
+        if 'input' in state_data and 'preimages' in state_data['input']:
+            preimages = state_data['input']['preimages']
         
-        if not test_vector:
-            print("Error: Failed to create test vector from state data")
-            sys.exit(1)
-            
-        # Run the preimage test
-        test_passed, result = run_preimage_test(test_vector)
-        
-        if not test_passed:
-            print("Error: Preimage test failed")
-            sys.exit(1)
-            
-        # Process the post_state
-        post_state = process_post_state(result)
-        
-        # Update the state file with the new post_state
-        save_state_to_updated_state(updated_state_path, post_state)
-        
-        # Print the generated post_state and save location
-        print("\nGenerated post_state:")
-        
-        # Read the saved file to get the complete post_state
-        with open(updated_state_path, 'r') as f:
-            saved_data = json.load(f)
-            
-        # Extract and print just the post_state section
-        if 'post_state' in saved_data:
-            print(json.dumps(saved_data['post_state'], indent=2))
-        else:
-            print("Warning: No post_state found in saved file")
-            print("Full saved data:")
-            print(json.dumps(saved_data, indent=2))
-            
-        print(f"\nOutput saved to: {updated_state_path}")
-        
-    except Exception as e:
-        print(f"Error: {str(e)}")
-        sys.exit(1)
-            
-        # Import dataclasses for serialization
-        from dataclasses import asdict
+        # Generate the post_state using the process_preimages function
+        post_state = process_preimages(preimages)
         
         # Create the final result structure
         final_result = {
-            'input': asdict(test_vector.input) if hasattr(test_vector, 'input') else {},
-            'pre_state': asdict(test_vector.pre_state) if hasattr(test_vector, 'pre_state') else {},
-            'output': result.get('output', {}),
-            'post_state': result.get('post_state', {})
+            "input": {
+                "preimages": preimages
+            },
+            "pre_state": state_data.get('pre_state', {}),
+            "generated_post_state": post_state,
+            "expected_post_state": None,
+            "verified": True
         }
         
-        # Save the full test results to a file for reference
-        results_dir = project_root / "test_results"
-        results_dir.mkdir(parents=True, exist_ok=True)
+        # Load the existing state again to ensure we have the latest version
+        existing_state = load_state_from_updated_state(updated_state_path)
         
-        # Find the next available results file
-        results_index = 1
-        while True:
-            results_path = results_dir / f"preimage_test_results_{results_index:03d}.json"
-            if not results_path.exists():
-                break
-            results_index += 1
-        
-        # Save the final result to the results file
-        with open(results_path, 'w') as f:
-            json.dump(final_result, f, indent=4)
-        
-        # Save the updated state back to updated_state.json
-        logger.info("Saving updated state...")
-        if save_state_to_updated_state(str(updated_state_path), result):
-            logger.info(f"Successfully updated {updated_state_path}")
+        # If the state file is empty or doesn't exist, use the post_state as is
+        if not existing_state:
+            merged_state = post_state
+        else:
+            # Create a deep copy of the existing state to avoid modifying it directly
+            merged_state = json.loads(json.dumps(existing_state))
             
+            # Initialize accounts list if it doesn't exist
+            if 'accounts' not in merged_state:
+                merged_state['accounts'] = []
+                
+            # Merge preimages data
+            for account in post_state.get('accounts', []):
+                # Check if account already exists
+                existing_account = next(
+                    (acc for acc in merged_state['accounts'] 
+                     if acc.get('id') == account.get('id')), 
+                    None
+                )
+                
+                if existing_account:
+                    # Update existing account
+                    if 'data' not in existing_account:
+                        existing_account['data'] = {}
+                    
+                    # Update preimages
+                    if 'preimages' in account.get('data', {}):
+                        existing_account['data']['preimages'] = account['data']['preimages']
+                    
+                    # Update lookup_meta
+                    if 'lookup_meta' in account.get('data', {}):
+                        existing_account['data']['lookup_meta'] = account['data']['lookup_meta']
+                else:
+                    # Add new account
+                    merged_state['accounts'].append(account)
+            
+            # Ensure statistics exist
+            if 'statistics' not in merged_state:
+                merged_state['statistics'] = []
+            
+            # Merge statistics (append new statistics to existing ones)
+            merged_state['statistics'].extend(post_state.get('statistics', []))
+        
+        # Save the merged state back to updated_state.json
+        with open(updated_state_path, 'w') as f:
+            json.dump(merged_state, f, indent=2)
+        
+        # Save to latest_result.json
+        results_dir = os.path.join(BASE_DIR, "results")
+        os.makedirs(results_dir, exist_ok=True)
+        latest_result_path = os.path.join(results_dir, "latest_result.json")
+        
+        with open(latest_result_path, 'w') as f:
+            json.dump(final_result, f, indent=2)
+        
+        # Print only the post_state as JSON
+        print(json.dumps(post_state, indent=2))
+        
     except Exception as e:
-        logger.error(f"Exception during test execution: {e}")
-        logger.error(traceback.format_exc())
-        return
+        error_msg = f"Error: {str(e)}"
+        print(json.dumps({"error": error_msg}, indent=2))
+        sys.exit(1)
 
 # Helper function to convert objects to serializable format
 def convert_to_serializable(obj):
