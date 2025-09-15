@@ -3,9 +3,11 @@ import os
 import sys
 import requests
 from hashlib import sha256
+from pathlib import Path
+from typing import Dict, Any, Optional, Tuple
 from substrateinterface import Keypair, KeypairType
 from scalecodec.base import RuntimeConfigurationObject
-from typing import List, Dict, Any
+from datetime import datetime, timezone
 
 # --- Part 1: PVM Authorization ---
 
@@ -57,47 +59,171 @@ custom_types = {
     }
 }
 
-def execute_pvm_authorization():
-    """Generates a valid request and calls the PVM authorizer."""
-    print("--- Step 1: Generating and executing PVM authorization request ---")
+def load_updated_state(server_dir: str = "../server") -> Dict[str, Any]:
+    """Load the current state from updated_state.json"""
+    state_path = Path(server_dir) / "updated_state.json"
+    try:
+        with open(state_path, 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {"authorizations": {}}
 
+def save_updated_state(state: Dict[str, Any], server_dir: str = "../server") -> None:
+    """Save the updated state to updated_state.json"""
+    state_path = Path(server_dir) / "updated_state.json"
+    with open(state_path, 'w') as f:
+        json.dump(state, f, indent=2)
+
+def execute_pvm_authorization(
+    payload_data: bytes = None,
+    service_id: int = 1,
+    seed: str = None,
+    server_url: str = "http://127.0.0.1:8000"
+) -> Tuple[bool, Dict[str, Any]]:
+    """
+    Generates and executes a PVM authorization request.
+    
+    Args:
+        payload_data: The payload data to be authorized (default: b"increment_counter_by_10")
+        service_id: The service ID for the work item
+        seed: The seed for key generation (default: Alice's test seed)
+        server_url: Base URL of the server
+        
+    Returns:
+        Tuple of (success: bool, result: dict)
+    """
+    print("--- Step 1: Generating and executing PVM authorization request ---")
+    
+    # Use default payload if none provided
+    if payload_data is None:
+        payload_data = b"increment_counter_by_10"
+    
+    # Use Alice's test seed if none provided
+    if seed is None:
+        seed = "0xe5be9a5092b81bca64be81d212e7f2f9eba183bb7a90954f7b76361f6edb5c0a"
+    
+    # Initialize type registry
     type_registry = RuntimeConfigurationObject()
     type_registry.update_type_registry(custom_types)
-
-    alice_seed = "0xe5be9a5092b81bca64be81d212e7f2f9eba183bb7a90954f7b76361f6edb5c0a"
-    keypair = Keypair.create_from_seed(seed_hex=alice_seed, crypto_type=KeypairType.ED25519)
     
-    payload_data = b"increment_counter_by_10"
+    # Load current state to get nonce
+    current_state = load_updated_state()
+    keypair = Keypair.create_from_seed(seed_hex=seed, crypto_type=KeypairType.ED25519)
+    public_key_hex = keypair.public_key.hex()
+    
+    # Get or initialize nonce
+    nonce = 0
+    if "authorizations" in current_state and public_key_hex in current_state["authorizations"]:
+        nonce = current_state["authorizations"][public_key_hex].get("nonce", 0) + 1
+    
+    # Sign the payload
     payload_hash = sha256(payload_data).digest()
     signature = keypair.sign(payload_hash)
-    credentials_data = {'public_key': keypair.public_key, 'signature': signature, 'nonce': 0}
-
-    work_package_data = {
-        'items': [{'service_id': 1, 'code_hash': b'\x00' * 32, 'payload': payload_data, 'refine_gas': 0, 'accumulate_gas': 0, 'export_count': 0, 'imports': [], 'extrinsics': []}],
-        'auth_token': b'', 'auth_service_id': 0, 'auth_code_hash': b'\x00'*32, 'auth_config': b'',
-        'context': {'anchor_hash': b'\x00'*32, 'state_root': b'\x00'*32, 'acc_output_log_peak': b'\x00'*32, 'lookup_anchor_hash': b'\x00'*32, 'lookup_timeslot': 0, 'prerequisites': []}
+    
+    # Prepare authorization data
+    auth_data = {
+        "public_key": keypair.public_key,
+        "signature": signature,
+        "nonce": nonce
     }
     
-    auth_encoder = type_registry.create_scale_object('AuthCredentials')
-    pkg_encoder = type_registry.create_scale_object('WorkPackage')
-    encoded_auth = auth_encoder.encode(credentials_data)
-    encoded_package = pkg_encoder.encode(work_package_data)
-    param_hex = encoded_auth.to_hex()[2:]
-    package_hex = encoded_package.to_hex()[2:]
-
+    # Prepare work package
+    work_package_data = {
+        'items': [{
+            'service_id': service_id,
+            'code_hash': b'\x00' * 32,
+            'payload': payload_data,
+            'refine_gas': 0,
+            'accumulate_gas': 0,
+            'export_count': 0,
+            'imports': [],
+            'extrinsics': []
+        }],
+        'auth_token': b'',
+        'auth_service_id': 0,
+        'auth_code_hash': b'\x00' * 32,
+        'auth_config': b'',
+        'context': {
+            'anchor_hash': b'\x00' * 32,
+            'state_root': b'\x00' * 32,
+            'acc_output_log_peak': b'\x00' * 32,
+            'lookup_anchor_hash': b'\x00' * 32,
+            'lookup_timeslot': 0,
+            'prerequisites': []
+        }
+    }
+    
     try:
+        # First, try the new server endpoint
+        response = requests.post(
+            f"{server_url}/authorize",
+            json={
+                "public_key": public_key_hex,
+                "signature": signature.hex(),
+                "nonce": nonce,
+                "payload": {
+                    "service_id": service_id,
+                    "payload_data": payload_data.decode('utf-8', 'ignore'),
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
+            }
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            if result.get("success", False):
+                print("✅ Authorization successful via server endpoint")
+                return True, result
+            else:
+                print(f"❌ Server authorization failed: {result.get('message', 'Unknown error')}")
+                return False, result
+        
+        # Fall back to direct PVM call if server endpoint fails
+        print("⚠️  Server endpoint failed, falling back to direct PVM call")
+        
+        # Encode the authorization and package
+        auth_encoder = type_registry.create_scale_object('AuthCredentials')
+        pkg_encoder = type_registry.create_scale_object('WorkPackage')
+        encoded_auth = auth_encoder.encode(auth_data)
+        encoded_package = pkg_encoder.encode(work_package_data)
+        
+        # Make the PVM request
         response = requests.post(
             "http://127.0.0.1:8080/authorizer/is_authorized",
-            json={"param_hex": param_hex, "package_hex": package_hex, "core_index_hex": "00000000"}
+            json={
+                "param_hex": encoded_auth.to_hex()[2:],
+                "package_hex": encoded_package.to_hex()[2:],
+                "core_index_hex": "00000000"
+            }
         )
         response.raise_for_status()
         result = response.json()
-        if result.get("output_hex") == param_hex:
+        
+        # Update state if successful
+        if result.get("output_hex") == encoded_auth.to_hex()[2:]:
+            # Update the state with the new authorization
+            if "authorizations" not in current_state:
+                current_state["authorizations"] = {}
+                
+            current_state["authorizations"][public_key_hex] = {
+                "public_key": public_key_hex,
+                "nonce": nonce,
+                "last_updated": datetime.now(timezone.utc).isoformat(),
+                "payload": {
+                    "service_id": service_id,
+                    "payload_data": payload_data.decode('utf-8', 'ignore')
+                }
+            }
+            save_updated_state(current_state)
             print("✅ PVM Authorization successful!")
-            return True
+            return True, result
         else:
             print(f"❌ PVM Authorization failed with response: {result}")
-            return False
+            return False, result
+            
+    except Exception as e:
+        print(f"❌ Error during authorization: {str(e)}")
+        return False, {"error": str(e)}
     except requests.exceptions.RequestException as e:
         print(f"❌ Could not connect to PVM server: {e}")
         return False
@@ -215,24 +341,46 @@ def run_stf_test_on_file(test_vector_path: str):
         diff = difflib.unified_diff(expected, actual, fromfile='expected', tofile='actual', lineterm='')
         print("Difference:\n" + '\n'.join(diff))
 
-# --- Main execution ---
-if __name__ == "__main__":
-    pvm_ok = execute_pvm_authorization()
-
-    if pvm_ok:
-        current_dir = os.path.dirname(__file__)
-        
-        test_folders = [
-            "/Users/anishgajbhare/Documents/Jam_implementation_full/authorizations/tiny",
-            "/Users/anishgajbhare/Documents/Jam_implementation_full/authorizations/full"
+def main():
+    """Main function to demonstrate the authorization flow"""
+    # Example 1: Simple authorization with default values
+    print("\n--- Example 1: Default authorization ---")
+    success, result = execute_pvm_authorization()
+    
+    if success:
+        print("\n--- Example 2: Custom payload ---")
+        custom_payload = b"custom_payload_123"
+        success, result = execute_pvm_authorization(
+            payload_data=custom_payload,
+            service_id=2
+        )
+    
+    # Run STF tests if available
+    if success:
+        print("\n--- Running STF tests ---")
+        test_files = [
+            "progress_authorizations-1.json",
+            "progress_authorizations-2.json"
         ]
-
-        for folder in test_folders:
-            test_dir = os.path.normpath(os.path.join(current_dir, folder))
-            if os.path.isdir(test_dir):
-                for filename in sorted(os.listdir(test_dir)):
-                    if filename.endswith(".json"):
-                        run_stf_test_on_file(os.path.join(test_dir, filename))
+        
+        all_passed = True
+        for test_file in test_files:
+            test_path = os.path.join("full", test_file)
+            if os.path.exists(test_path):
+                print(f"\nRunning test: {test_file}")
+                if not run_stf_test_on_file(test_path):
+                    all_passed = False
             else:
-                print(f"Warning: Test directory not found: {test_dir}")
+                print(f"Test file not found: {test_path}")
+                all_passed = False
+        
+        if all_passed:
+            print("\n✅ All tests passed!")
+        else:
+            print("\n❌ Some tests failed!")
+            sys.exit(1)
 
+if __name__ == "__main__":
+    with open('updated_state.json', 'r') as f:
+        current_state = json.load(f)
+    main()

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -15,6 +15,9 @@ import difflib
 from contextlib import asynccontextmanager
 import psutil
 import subprocess
+from hashlib import sha256
+import nacl.signing
+import base64
 
 
 # Add project root and src directory to sys.path so sibling packages are importable
@@ -43,6 +46,20 @@ app = FastAPI(
     description="REST API server for JAM protocol safrole, dispute, and state component integration",
     version="1.0.0"
 )
+
+# Pydantic model for authorization request
+class AuthorizationRequest(BaseModel):
+    public_key: str
+    signature: str
+    nonce: int
+    payload: Dict[str, Any]
+
+# Pydantic model for authorization response
+class AuthorizationResponse(BaseModel):
+    success: bool
+    message: str
+    auth_output: Optional[str] = None
+    updated_state: Optional[Dict[str, Any]] = None
 
 # Add CORS middleware
 app.add_middleware(
@@ -1439,10 +1456,82 @@ async def root():
 async def health_check():
     """Health check endpoint."""
     return {
-        "status": "healthy", 
-        "safrole_initialized": safrole_manager is not None,
-        "sample_data_loaded": len(original_sample_data) > 0
+        "status": "ok",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "version": "1.0.0"
     }
+
+@app.post("/authorize", response_model=AuthorizationResponse)
+async def authorize(request: AuthorizationRequest):
+    """
+    Handle authorization requests.
+    
+    Args:
+        request: Authorization request containing public key, signature, nonce, and payload
+        
+    Returns:
+        Authorization response with success status and updated state
+    """
+    try:
+        # Verify the signature
+        try:
+            public_key_bytes = bytes.fromhex(request.public_key)
+            signature_bytes = bytes.fromhex(request.signature)
+            message = json.dumps(request.payload, sort_keys=True).encode()
+            
+            # Verify signature using PyNaCl (ed25519-dalek compatible)
+            verify_key = nacl.signing.VerifyKey(public_key_bytes)
+            verify_key.verify(message, signature_bytes)
+            
+        except Exception as e:
+            return AuthorizationResponse(
+                success=False,
+                message=f"Invalid signature: {str(e)}"
+            )
+        
+        # Load current state
+        try:
+            with open('updated_state.json', 'r') as f:
+                current_state = json.load(f)
+        except FileNotFoundError:
+            current_state = {"authorizations": {}}
+        
+        # Update state with new authorization
+        auth_key = request.public_key
+        if "authorizations" not in current_state:
+            current_state["authorizations"] = {}
+            
+        current_state["authorizations"][auth_key] = {
+            "public_key": request.public_key,
+            "nonce": request.nonce,
+            "last_updated": datetime.now(timezone.utc).isoformat(),
+            "payload": request.payload
+        }
+        
+        # Save updated state
+        with open('updated_state.json', 'w') as f:
+            json.dump(current_state, f, indent=2)
+        
+        # Generate auth output (hash of the authorization data)
+        auth_data = {
+            "public_key": request.public_key,
+            "nonce": request.nonce,
+            "payload": request.payload
+        }
+        auth_output = sha256(json.dumps(auth_data, sort_keys=True).encode()).hexdigest()
+        
+        return AuthorizationResponse(
+            success=True,
+            message="Authorization successful",
+            auth_output=auth_output,
+            updated_state=current_state
+        )
+        
+    except Exception as e:
+        return AuthorizationResponse(
+            success=False,
+            message=f"Authorization failed: {str(e)}"
+        )
 
 @app.post("/initialize", response_model=StateResponse)
 async def initialize_safrole():

@@ -1,12 +1,62 @@
 extern crate alloc;
 
 use crate::types::AuthCredentials;
-use crate::service::GLOBAL_STATE;
 use ed25519_dalek::{ Signature, VerifyingKey };
 use jam_codec::Decode;
 use jam_pvm_common::{ declare_authorizer, info, Authorizer };
 use jam_types::{ AuthOutput, AuthParam, CoreIndex, WorkPackage };
+use serde::{Serialize, Deserialize};
 use sha2::{ Digest, Sha256 };
+use std::collections::HashMap;
+use std::fs;
+use std::path::Path;
+use std::sync::Mutex;
+
+lazy_static::lazy_static! {
+    static ref AUTH_STATE: Mutex<AuthState> = Mutex::new(load_auth_state());
+}
+
+#[derive(Debug, Serialize, Deserialize, Default)]
+pub struct AuthState {
+    pub nonces: HashMap<[u8; 32], u64>,
+    pub authorizations: HashMap<String, AuthRecord>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AuthRecord {
+    pub public_key: String,
+    pub nonce: u64,
+    pub last_updated: String,
+    pub payload: serde_json::Value,
+}
+
+const STATE_FILE: &str = "../server/updated_state.json";
+
+fn load_auth_state() -> AuthState {
+    let path = Path::new(STATE_FILE);
+    if !path.exists() {
+        return AuthState::default();
+    }
+
+    match fs::read_to_string(path) {
+        Ok(contents) => {
+            serde_json::from_str(&contents).unwrap_or_else(|_| {
+                eprintln!("Failed to parse auth state, using default");
+                AuthState::default()
+            })
+        }
+        Err(e) => {
+            eprintln!("Failed to read auth state: {}", e);
+            AuthState::default()
+        }
+    }
+}
+
+fn save_auth_state(state: &AuthState) -> std::io::Result<()> {
+    let serialized = serde_json::to_string_pretty(state)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    fs::write(STATE_FILE, serialized)
+}
 
 pub struct MyJamAuthorizer;
 
@@ -25,19 +75,38 @@ impl Authorizer for MyJamAuthorizer {
         };
 
         // --- NONCE VERIFICATION ---
-        let state = GLOBAL_STATE.lock().unwrap();
+        let mut state = AUTH_STATE.lock().unwrap();
+        let public_key_hex = hex::encode(creds.public_key);
         let expected_nonce = state.nonces.get(&creds.public_key).cloned().unwrap_or(0);
 
         if creds.nonce != expected_nonce {
             info!(
-                target = "authorizer",
-                "Auth failed: Invalid nonce. Expected {}, got {}.",
+                target= "authorizer",
+                "Auth failed: Invalid nonce for {}. Expected {}, got {}.",
+                public_key_hex,
                 expected_nonce,
                 creds.nonce
             );
             return AuthOutput(Sha256::digest(b"INVALID_NONCE").to_vec());
         }
-        drop(state); // release lock before further logic
+
+        // Update nonce for next time
+        state.nonces.insert(creds.public_key, creds.nonce + 1);
+
+        // Save authorization record
+        let record = AuthRecord {
+            public_key: public_key_hex,
+            nonce: creds.nonce,
+            last_updated: chrono::Utc::now().to_rfc3339(),
+            payload: serde_json::from_slice(&package.items[0].payload)
+                .unwrap_or_else(|_| serde_json::json!({ "error": "invalid_payload" })),
+        };
+
+        // Save the updated state
+        if let Err(e) = save_auth_state(&state) {
+            eprintln!("Failed to save auth state: {}", e);
+            return AuthOutput(Sha256::digest(b"STATE_SAVE_ERROR").to_vec());
+        }
 
         // --- PAYLOAD & SIGNATURE CHECK ---
         let Some(first_item) = package.items.get(0) else {
