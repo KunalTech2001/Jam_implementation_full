@@ -373,25 +373,79 @@ def main() -> None:
     4. Saves the results to both updated_state.json and latest_result.json
     """
     try:
+        logger.info("Starting process_updated_state.main()")
+        
         BASE_DIR = os.path.dirname(os.path.abspath(__file__))
         state_file = os.path.join(BASE_DIR, "..", "server", "updated_state.json")
         updated_state_path = os.path.normpath(state_file)
         
+        # Default state structure
+        default_state = {
+            "input": {"preimages": []},
+            "pre_state": {"accounts": {}},
+            "post_state": {"accounts": []},
+            "statistics": {}
+        }
+        
         # Check if the file exists
         if not os.path.exists(updated_state_path):
-            print(json.dumps({"error": f"{updated_state_path} does not exist"}, indent=2))
-            sys.exit(1)
+            logger.warning(f"State file not found at {updated_state_path}, using default state")
+            state_data = default_state
+            # Create the directory structure if it doesn't exist
+            os.makedirs(os.path.dirname(updated_state_path), exist_ok=True)
+        else:
+            # Load the state from the file
+            try:
+                with open(updated_state_path, 'r') as f:
+                    state_data = json.load(f)
+                logger.info(f"Successfully loaded state from {updated_state_path}")
+            except (json.JSONDecodeError, IOError) as e:
+                logger.error(f"Error loading state file, using default state: {str(e)}")
+                state_data = default_state
         
-        # Load the state from the file
-        state_data = load_state_from_updated_state(updated_state_path)
+        # Ensure all required top-level keys exist
+        for key in ["input", "pre_state", "post_state", "statistics"]:
+            if key not in state_data:
+                state_data[key] = default_state[key]
+                
+        # Ensure pre_state.accounts is a dict and post_state.accounts is a list
+        if not isinstance(state_data.get("pre_state", {}).get("accounts"), dict):
+            state_data["pre_state"]["accounts"] = {}
+        if not isinstance(state_data.get("post_state", {}).get("accounts"), list):
+            state_data["post_state"]["accounts"] = []
         
         # Extract preimages from input or use empty list
         preimages = []
-        if 'input' in state_data and 'preimages' in state_data['input']:
-            preimages = state_data['input']['preimages']
+        if 'preimages' in state_data and isinstance(state_data['preimages'], list):
+            preimages = state_data['preimages']
+            logger.info(f"Found {len(preimages)} preimages at root level")
+        elif 'input' in state_data and isinstance(state_data['input'], dict) and 'preimages' in state_data['input']:
+            if isinstance(state_data['input']['preimages'], list):
+                preimages = state_data['input']['preimages']
+                logger.info(f"Found {len(preimages)} preimages in input.preimages")
+        
+        logger.info(f"Processing {len(preimages)} preimages")
         
         # Generate the post_state using the process_preimages function
-        post_state = process_preimages(preimages)
+        try:
+            post_state = process_preimages(preimages)
+            logger.info(f"Successfully processed {len(preimages)} preimages into {len(post_state.get('accounts', []))} accounts")
+            
+            # Update the state with the new post_state
+            if 'post_state' not in state_data or not isinstance(state_data['post_state'], dict):
+                state_data['post_state'] = {"accounts": []}
+                
+            # Merge the post_state with the existing state
+            if 'accounts' in post_state and isinstance(post_state['accounts'], list):
+                state_data['post_state']['accounts'] = post_state['accounts']
+            if 'statistics' in post_state:
+                state_data['statistics'] = post_state['statistics']
+                
+        except Exception as e:
+            error_msg = f"Error processing preimages: {str(e)}\n{traceback.format_exc()}"
+            logger.error(error_msg)
+            post_state = {"accounts": [], "statistics": {}}
+            state_data['post_state'] = {"accounts": []}
         
         # Create the final result structure
         final_result = {

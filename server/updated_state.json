@@ -76,14 +76,14 @@
       "f68eecf10fa3ad9014e75568ee331bb21442a1a660d03e1e996d9df7670292a7"
     ],
     [
-      "0x678db0eeb08c934b1b4589a25a227b7a69cc0c265a933e3156b115533a219c8a",
-      "0xaf598f55bba7e091ef9d4907a220618986ca2080c2afc7507fb01a921ea2ecf1",
       "0x73ccab71822917abbe4b3445e700efe2084a46294c4423d39bef140f88666644",
       "0xc87445f68f595d64e0a95d4e12c546fde2e57f5ee1fb06058aa6440cca12b4db",
       "0x642d7bc9014bbbdf322365eac8d2293a8d36bc78b00c8a74c2bbd99f4fe5fa7b",
       "0x0d306820052489586a3b1b52032214aed73933f85c723fdc2992c86f8dcc995a",
       "0x68691f42563bfd1b4cb167237ee9a98b6bb3d4781815d2881a546f29e0ad08e1",
-      "0xc2626d062d16e0af353b537cb584a12165534db082d52fff38defa49fa29eeb0"
+      "0xc2626d062d16e0af353b537cb584a12165534db082d52fff38defa49fa29eeb0",
+      "0xc3981a2701913219fb8df10b30f6e8050f361bfc81bf2c8f182700be780ce325",
+      "0xba3e7f4009cb5504857f527071c7015c68722a46e0012d3e191a8420af47906c"
     ]
   ],
   "auth_queues": [
@@ -171,8 +171,6 @@
       "f68eecf10fa3ad9014e75568ee331bb21442a1a660d03e1e996d9df7670292a7"
     ],
     [
-      "0xc3981a2701913219fb8df10b30f6e8050f361bfc81bf2c8f182700be780ce325",
-      "0xba3e7f4009cb5504857f527071c7015c68722a46e0012d3e191a8420af47906c",
       "0xcda541f09db5752f99f841e2d60db7bcc13e4160e0c4df0d54055b865111f74c",
       "0x9dc1bc830943219a6bd5314df2d71e095efad4a5f85b4b5326f402785b85cfc4",
       "0xf460dee552d492e95d5f0cf8579414745a7475144754b478cdfbe4c346ca3179",
@@ -303,16 +301,6 @@
         "count": 1
       },
       "reported": []
-    },
-    {
-      "header_hash": "0xb9a07089b65517ade3874fc891cc6206dfe5e753ac3bfb8dbf2cf0fe514b2a98",
-      "state_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
-      "mmr": {
-        "peaks": [],
-        "count": 0
-      },
-      "reported": [],
-      "timestamp": 0
     }
   ],
   "cores_statistics": [
@@ -353,18 +341,13 @@
     "0x8c039ff7caa17ccebfcadc44bd9fce6a4b6699c4d03de2e3349aa1dc11193cd7"
   ],
   "input": {
-    "preimages": [
-      {
-        "requester": "0x0000000000000000000000000000000000000000000000000000000000000000",
-        "blob": "0x92cdf578c47085a5992256f0dcf97d0b19f1f1c9de4d5fe30c3ace6191b6e5dbcee1b3419782ad92ec2dffed6d3f"
-      }
-    ]
+    "preimages": []
   },
   "metadata": {
     "assurance_fields_updated": 3,
     "current_slot": 0,
-    "last_updated": "2025-09-16T12:46:11.933761+00:00",
-    "updated_by": "authorization_processor",
+    "last_updated": "2025-09-16T22:20:42.996466",
+    "updated_by": "assurances_component",
     "updated_from_original": "/Users/anish/Desktop/JAM-UPDATED/Jam_implementation_full/server/sample_data.json",
     "auth_fields_updated": 4
   },
@@ -425,7 +408,8 @@
           "codeHash": "0x00"
         }
       }
-    }
+    },
+    "accounts": []
   },
   "pre_state": {
     "beta": [
@@ -587,7 +571,8 @@
     "slot": 0,
     "tau": 0,
     "vals_curr_stats": [],
-    "vals_last_stats": []
+    "vals_last_stats": [],
+    "accounts": {}
   },
   "prev_validators": [
     {
@@ -834,8 +819,8 @@
   "authorizations": {
     "eea8ee0a210980e80769293bcbc1c4a79f74c83af48c97c8c0e921d6f1a95ca1": {
       "public_key": "eea8ee0a210980e80769293bcbc1c4a79f74c83af48c97c8c0e921d6f1a95ca1",
-      "nonce": 4,
-      "last_updated": "2025-09-16T12:46:11.933518+00:00",
+      "nonce": 6,
+      "last_updated": "2025-09-16T16:07:28.128380+00:00",
       "payload": {
         "service_id": 1,
         "core": 0,
@@ -856,11 +841,43 @@
         "pvm_result": {
           "output_hex": "b3408c1a5d4e41c41c433544ce7d7e2b33d457a7bebe7d170f57c28004f6336b"
         },
-        "nonce": 3,
-        "auth_credentials_hex": "eea8ee0a210980e80769293bcbc1c4a79f74c83af48c97c8c0e921d6f1a95ca1eee36664802f8d993d1fcdd59067619267e95ea70685bc0049fe61dddf9108d57a0d0d9bea7a4ded83f244f62d5f90b830df26f82ce2d2d02efd338af6a1d9080300000000000000",
+        "nonce": 5,
+        "auth_credentials_hex": "eea8ee0a210980e80769293bcbc1c4a79f74c83af48c97c8c0e921d6f1a95ca1eee36664802f8d993d1fcdd59067619267e95ea70685bc0049fe61dddf9108d57a0d0d9bea7a4ded83f244f62d5f90b830df26f82ce2d2d02efd338af6a1d9080500000000000000",
         "work_package_hex": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010000000100000000000000000000000000000000000000000000000000000000000000000000009b0000007b22636f7265223a20302c2022736572766963655f6964223a20312c2022736c6f74223a203130302c2022776f726b5f7061636b616765223a207b226974656d73223a205b7b226761735f6c696d6974223a20313030303030302c20227061796c6f61645f64617461223a202248656c6c6f204a414d20417574686f72697a6174696f6e21222c2022736572766963655f6964223a20317d5d7d7d40420f000000000040420f0000000000000000000000000000000000"
       }
     }
   },
-  "slot": 100
+  "slot": 125,
+  "ready_queue": [
+    [],
+    [],
+    [],
+    [],
+    [],
+    [
+      {
+        "report": {
+          "core_index": 5,
+          "results": [
+            {
+              "service_id": 3,
+              "result": {
+                "ok": "0xff00ff"
+              }
+            }
+          ],
+          "package_spec": {
+            "hash": "3300000000000000000000000000000000000000000000000000000000000000"
+          }
+        },
+        "dependencies": []
+      }
+    ],
+    [],
+    [],
+    [],
+    [],
+    [],
+    []
+  ]
 }

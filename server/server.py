@@ -674,6 +674,8 @@ def run_jam_preimages(preimages=None):
                 capture_output=True,
                 text=True
             )
+
+            logger.info(f"jam-preimages executed with output: {result.stdout}")
             
             if result.returncode != 0:
                 logger.error(f"jam-preimages failed with error: {result.stderr}")
