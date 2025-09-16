@@ -235,14 +235,21 @@ def inspect_vector(vector_path):
         print(f"Error inspecting file: {e}")
 
 def main():
-
-    print("DEBUG: main() entered")
-    script_dir = os.path.dirname(os.path.abspath(__file__))
+    import argparse
     
+    print("DEBUG: main() entered")
+    
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='Run JAM Reports component')
+    parser.add_argument('--input', type=str, help='JSON input data for processing')
+    args = parser.parse_args()
+    
+    script_dir = os.path.dirname(os.path.abspath(__file__))
     updated_state_path = os.path.abspath(
         os.path.join(script_dir, '..', '..', 'server', 'updated_state.json')
     )
 
+    # Load pre_state from updated_state.json
     if not os.path.exists(updated_state_path):
         print(f"❌ Could not find updated_state.json at {updated_state_path}")
         return
@@ -253,18 +260,34 @@ def main():
         updated_state = updated_state[0]
 
     pre_state = updated_state.get("pre_state")
-    input_data = updated_state.get("input")
-    print("DEBUG: Loaded updated_state.json content")
+    
+    # Use command line input if provided, otherwise fall back to file input
+    if args.input:
+        try:
+            input_data = json.loads(args.input)
+            print("DEBUG: Using command line input data")
+        except json.JSONDecodeError as e:
+            print(f"❌ Invalid JSON in command line input: {e}")
+            return
+    else:
+        input_data = updated_state.get("input")
+        print("DEBUG: Using input data from updated_state.json")
+        if input_data and "extrinsic" in input_data:
+            for key in ["guarantees", "assurances", "tickets", "preimages", "disputes"]:
+                if key in input_data["extrinsic"]:
+                    input_data[key] = input_data["extrinsic"][key]
+    
     print("DEBUG: pre_state:", json.dumps(pre_state, indent=2) if pre_state else "None")
     print("DEBUG: input_data:", json.dumps(input_data, indent=2) if input_data else "None")
-    if input_data and "extrinsic" in input_data:
-        for key in ["guarantees", "assurances", "tickets", "preimages", "disputes"]:
-            if key in input_data["extrinsic"]:
-                input_data[key] = input_data["extrinsic"][key]
 
-    if not pre_state or not input_data:
-        print("❌ updated_state.json missing 'pre_state' or 'input'")
+    if not pre_state:
+        print("❌ No pre_state found")
         return
+        
+    if not input_data:
+        print("❌ No input_data found")
+        return
+        
     if "guarantees" not in input_data or not input_data["guarantees"]:
         print("❌ No guarantees found in input_data, skipping processing.")
         return

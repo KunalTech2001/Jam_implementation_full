@@ -4,3 +4,7 @@ pydantic>=2.5.0
 requests>=2.31.0
 python-multipart>=0.0.6
 pynacl>=1.5.0
+cryptography>=41.0.0
+httpx>=0.25.0
+substrate-interface>=1.7.0
+scalecodec>=1.2.0

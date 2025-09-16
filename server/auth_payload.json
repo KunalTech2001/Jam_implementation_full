@@ -1,0 +1,7 @@
+{
+  "data": {
+    "action": "authorize",
+    "data": "test_authorization_payload"
+  },
+  "description": "Sample payload for testing authorization endpoint"
+}

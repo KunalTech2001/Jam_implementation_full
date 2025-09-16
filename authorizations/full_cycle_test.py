@@ -2,12 +2,17 @@ import json
 import os
 import sys
 import requests
+import asyncio
 from hashlib import sha256
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple
 from substrateinterface import Keypair, KeypairType
 from scalecodec.base import RuntimeConfigurationObject
 from datetime import datetime, timezone
+
+# Import the new authorization integrator
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'server'))
+from auth_integration import AuthorizationIntegrator
 
 # --- Part 1: PVM Authorization ---
 
@@ -74,7 +79,7 @@ def save_updated_state(state: Dict[str, Any], server_dir: str = "../server") -> 
     with open(state_path, 'w') as f:
         json.dump(state, f, indent=2)
 
-def execute_pvm_authorization(
+async def execute_pvm_authorization(
     payload_data: bytes = None,
     service_id: int = 1,
     seed: str = None,
@@ -92,7 +97,7 @@ def execute_pvm_authorization(
     Returns:
         Tuple of (success: bool, result: dict)
     """
-    print("--- Step 1: Generating and executing PVM authorization request ---")
+    print("--- Step 1: Generating and executing PVM authorization request (NEW INTEGRATION) ---")
     
     # Use default payload if none provided
     if payload_data is None:
@@ -102,131 +107,64 @@ def execute_pvm_authorization(
     if seed is None:
         seed = "0xe5be9a5092b81bca64be81d212e7f2f9eba183bb7a90954f7b76361f6edb5c0a"
     
-    # Initialize type registry
-    type_registry = RuntimeConfigurationObject()
-    type_registry.update_type_registry(custom_types)
+    # Initialize the new authorization integrator
+    integrator = AuthorizationIntegrator(server_dir="../server")
     
-    # Load current state to get nonce
-    current_state = load_updated_state()
+    # Generate keypair from seed
     keypair = Keypair.create_from_seed(seed_hex=seed, crypto_type=KeypairType.ED25519)
     public_key_hex = keypair.public_key.hex()
-    
-    # Get or initialize nonce
-    nonce = 0
-    if "authorizations" in current_state and public_key_hex in current_state["authorizations"]:
-        nonce = current_state["authorizations"][public_key_hex].get("nonce", 0) + 1
-    
-    # Sign the payload
-    payload_hash = sha256(payload_data).digest()
-    signature = keypair.sign(payload_hash)
-    
-    # Prepare authorization data
-    auth_data = {
-        "public_key": keypair.public_key,
-        "signature": signature,
-        "nonce": nonce
-    }
-    
-    # Prepare work package
-    work_package_data = {
-        'items': [{
-            'service_id': service_id,
-            'code_hash': b'\x00' * 32,
-            'payload': payload_data,
-            'refine_gas': 0,
-            'accumulate_gas': 0,
-            'export_count': 0,
-            'imports': [],
-            'extrinsics': []
-        }],
-        'auth_token': b'',
-        'auth_service_id': 0,
-        'auth_code_hash': b'\x00' * 32,
-        'auth_config': b'',
-        'context': {
-            'anchor_hash': b'\x00' * 32,
-            'state_root': b'\x00' * 32,
-            'acc_output_log_peak': b'\x00' * 32,
-            'lookup_anchor_hash': b'\x00' * 32,
-            'lookup_timeslot': 0,
-            'prerequisites': []
-        }
-    }
+    private_key_hex = keypair.private_key.hex()
     
     try:
-        # First, try the new server endpoint
+        # First, try the new server endpoint with Ed25519 integration
+        payload_json = {
+            "service_id": service_id,
+            "payload_data": payload_data.decode('utf-8', 'ignore'),
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+        
+        # Sign the JSON payload using Ed25519
+        payload_bytes = json.dumps(payload_json, sort_keys=True).encode()
+        signature_hex = integrator.sign_payload_ed25519(payload_bytes, private_key_hex)
+        
         response = requests.post(
             f"{server_url}/authorize",
             json={
                 "public_key": public_key_hex,
-                "signature": signature.hex(),
-                "nonce": nonce,
-                "payload": {
-                    "service_id": service_id,
-                    "payload_data": payload_data.decode('utf-8', 'ignore'),
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                }
+                "signature": signature_hex,
+                "payload": payload_json
             }
         )
         
         if response.status_code == 200:
             result = response.json()
             if result.get("success", False):
-                print("✅ Authorization successful via server endpoint")
+                print("✅ Authorization successful via server endpoint (Ed25519)")
                 return True, result
             else:
                 print(f"❌ Server authorization failed: {result.get('message', 'Unknown error')}")
                 return False, result
         
-        # Fall back to direct PVM call if server endpoint fails
+        # Fall back to direct PVM call using new integration
         print("⚠️  Server endpoint failed, falling back to direct PVM call")
         
-        # Encode the authorization and package
-        auth_encoder = type_registry.create_scale_object('AuthCredentials')
-        pkg_encoder = type_registry.create_scale_object('WorkPackage')
-        encoded_auth = auth_encoder.encode(auth_data)
-        encoded_package = pkg_encoder.encode(work_package_data)
-        
-        # Make the PVM request
-        response = requests.post(
-            "http://127.0.0.1:8080/authorizer/is_authorized",
-            json={
-                "param_hex": encoded_auth.to_hex()[2:],
-                "package_hex": encoded_package.to_hex()[2:],
-                "core_index_hex": "00000000"
-            }
+        success, pvm_result = await integrator.authorize_with_pvm(
+            payload_data=payload_data,
+            private_key_hex=private_key_hex,
+            public_key_hex=public_key_hex,
+            service_id=service_id
         )
-        response.raise_for_status()
-        result = response.json()
         
-        # Update state if successful
-        if result.get("output_hex") == encoded_auth.to_hex()[2:]:
-            # Update the state with the new authorization
-            if "authorizations" not in current_state:
-                current_state["authorizations"] = {}
-                
-            current_state["authorizations"][public_key_hex] = {
-                "public_key": public_key_hex,
-                "nonce": nonce,
-                "last_updated": datetime.now(timezone.utc).isoformat(),
-                "payload": {
-                    "service_id": service_id,
-                    "payload_data": payload_data.decode('utf-8', 'ignore')
-                }
-            }
-            save_updated_state(current_state)
-            print("✅ PVM Authorization successful!")
-            return True, result
+        if success:
+            print("✅ Direct PVM Authorization successful!")
+            return True, pvm_result
         else:
-            print(f"❌ PVM Authorization failed with response: {result}")
-            return False, result
+            print(f"❌ Direct PVM Authorization failed: {pvm_result.get('error', 'Unknown error')}")
+            return False, pvm_result
             
     except Exception as e:
         print(f"❌ Error during authorization: {str(e)}")
         return False, {"error": str(e)}
-    except requests.exceptions.RequestException as e:
-        print(f"❌ Could not connect to PVM server: {e}")
-        return False
 
 # --- Part 2: State Transition Function (STF) Logic ---
 
@@ -341,16 +279,16 @@ def run_stf_test_on_file(test_vector_path: str):
         diff = difflib.unified_diff(expected, actual, fromfile='expected', tofile='actual', lineterm='')
         print("Difference:\n" + '\n'.join(diff))
 
-def main():
+async def main():
     """Main function to demonstrate the authorization flow"""
     # Example 1: Simple authorization with default values
     print("\n--- Example 1: Default authorization ---")
-    success, result = execute_pvm_authorization()
+    success, result = await execute_pvm_authorization()
     
     if success:
         print("\n--- Example 2: Custom payload ---")
         custom_payload = b"custom_payload_123"
-        success, result = execute_pvm_authorization(
+        success, result = await execute_pvm_authorization(
             payload_data=custom_payload,
             service_id=2
         )
@@ -381,6 +319,13 @@ def main():
             sys.exit(1)
 
 if __name__ == "__main__":
-    with open('updated_state.json', 'r') as f:
-        current_state = json.load(f)
-    main()
+    # Ensure updated_state.json exists
+    if os.path.exists('updated_state.json'):
+        with open('updated_state.json', 'r') as f:
+            current_state = json.load(f)
+    else:
+        current_state = {"authorizations": {}}
+        with open('updated_state.json', 'w') as f:
+            json.dump(current_state, f, indent=2)
+    
+    asyncio.run(main())

@@ -1,20 +1,13 @@
 {
   "beta": [
     {
-      "header_hash": "0x241d129c6edc2114e6dfba7d556f7f7c66399b55ceec3078a53d44c752ba7e9a",
-      "state_root": "0x36657d44b4b6b962b95d04f6ca04a7ed08889464e6162af5a12b82787f9af23e",
+      "header_hash": "49b962cbb8993fd0e05aa01b0b54be1a2edd3da5d38442de5c379446571b9975",
+      "state_root": "0x54b6f57db9aec25675110ba371a7e964425f6b50f44781e82c10af7d9e743284",
       "mmr": {
-        "peaks": [
-          "0x7507515a48439dc58bc318c48a120b656136699f42bfd2bd45473becba53462d"
-        ],
+        "peaks": [],
         "count": 1
       },
-      "reported": [
-        {
-          "hash": "0x3cc8d8c94e7b3ee01e678c63fd6b5db894fc807dff7fe10a11ab41e70194894d",
-          "exports_root": "0xc0edfe377d20b9f4ed7d9df9511ef904c87e24467364f0f7f75f20cfe90dd8fb"
-        }
-      ]
+      "reported": []
     }
   ]
 }

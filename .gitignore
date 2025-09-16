@@ -178,3 +178,14 @@ Desktop.ini
 .env.development.local
 .env.test.local
 .env.production.local 
+
+curl -X POST http://127.0.0.1:8000/authorize \
+  -H "Content-Type: application/json" \
+  -d '{
+    "public_key": "2b218e86b49855b30fcd852c9761e43f0841149e1f66b859973fbe0dac0a6e4b",
+    "signature": "bbdfb9162077d44a2e7e5dcb0e421b8129fb821cb629491f4b6662d1007e4261fafb976d55c11552f4751f6f2a1695672771ddfe4b71e5e801cd376da12ff70d",
+    "payload": {
+      "action": "authorize",
+      "data": "test_data"
+    }
+  }'

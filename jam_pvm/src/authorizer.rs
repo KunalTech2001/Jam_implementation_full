@@ -18,8 +18,46 @@ lazy_static::lazy_static! {
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct AuthState {
+    #[serde(with = "nonces_serde")]
     pub nonces: HashMap<[u8; 32], u64>,
     pub authorizations: HashMap<String, AuthRecord>,
+}
+
+mod nonces_serde {
+    use super::*;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use std::collections::HashMap;
+
+    pub fn serialize<S>(nonces: &HashMap<[u8; 32], u64>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let string_map: HashMap<String, u64> = nonces
+            .iter()
+            .map(|(k, v)| (hex::encode(k), *v))
+            .collect();
+        string_map.serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<HashMap<[u8; 32], u64>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let string_map: HashMap<String, u64> = HashMap::deserialize(deserializer)?;
+        let mut nonces = HashMap::new();
+        
+        for (hex_key, value) in string_map {
+            if let Ok(bytes) = hex::decode(&hex_key) {
+                if bytes.len() == 32 {
+                    let mut key_array = [0u8; 32];
+                    key_array.copy_from_slice(&bytes);
+                    nonces.insert(key_array, value);
+                }
+            }
+        }
+        
+        Ok(nonces)
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -40,10 +78,33 @@ fn load_auth_state() -> AuthState {
 
     match fs::read_to_string(path) {
         Ok(contents) => {
-            serde_json::from_str(&contents).unwrap_or_else(|_| {
+            // Try to parse as AuthState first, then try as generic JSON
+            if let Ok(auth_state) = serde_json::from_str::<AuthState>(&contents) {
+                auth_state
+            } else if let Ok(generic_json) = serde_json::from_str::<serde_json::Value>(&contents) {
+                // Handle server's updated_state.json format
+                let mut auth_state = AuthState::default();
+                
+                if let Some(authorizations) = generic_json.get("authorizations").and_then(|v| v.as_object()) {
+                    for (pub_key, auth_data) in authorizations {
+                        if let Some(nonce) = auth_data.get("nonce").and_then(|v| v.as_u64()) {
+                            // Convert hex string to bytes for nonce storage
+                            if let Ok(pub_key_bytes) = hex::decode(pub_key) {
+                                if pub_key_bytes.len() == 32 {
+                                    let mut key_array = [0u8; 32];
+                                    key_array.copy_from_slice(&pub_key_bytes);
+                                    auth_state.nonces.insert(key_array, nonce);
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                auth_state
+            } else {
                 eprintln!("Failed to parse auth state, using default");
                 AuthState::default()
-            })
+            }
         }
         Err(e) => {
             eprintln!("Failed to read auth state: {}", e);
@@ -90,17 +151,25 @@ impl Authorizer for MyJamAuthorizer {
             return AuthOutput(Sha256::digest(b"INVALID_NONCE").to_vec());
         }
 
+        // Save authorization record - check if items exist first
+        let payload_value = if let Some(first_item) = package.items.get(0) {
+            serde_json::from_slice(&first_item.payload)
+                .unwrap_or_else(|_| serde_json::json!({ "error": "invalid_payload" }))
+        } else {
+            serde_json::json!({ "error": "no_items" })
+        };
+
         // Update nonce for next time
         state.nonces.insert(creds.public_key, creds.nonce + 1);
-
-        // Save authorization record
-        let record = AuthRecord {
-            public_key: public_key_hex,
-            nonce: creds.nonce,
+        
+        // Also update authorizations map with string key for JSON serialization
+        state.authorizations.insert(public_key_hex.clone(), AuthRecord {
+            public_key: public_key_hex.clone(),
+            nonce: creds.nonce + 1,
             last_updated: chrono::Utc::now().to_rfc3339(),
-            payload: serde_json::from_slice(&package.items[0].payload)
-                .unwrap_or_else(|_| serde_json::json!({ "error": "invalid_payload" })),
-        };
+            payload: payload_value,
+        });
+
 
         // Save the updated state
         if let Err(e) = save_auth_state(&state) {

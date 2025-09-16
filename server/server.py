@@ -1,14 +1,16 @@
-from fastapi import FastAPI, HTTPException, Request, Body
+from fastapi import FastAPI, HTTPException, Request, Body, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional, Tuple, Union
 import uvicorn
 import logging
+import json
+import logging
 import sys
 import os
-import json
-import datetime
+import requests
+import httpx
 from datetime import datetime, timezone
 from copy import deepcopy
 import difflib
@@ -18,6 +20,7 @@ import subprocess
 from hashlib import sha256
 import nacl.signing
 import base64
+from auth_integration import authorization_processor
 
 
 # Add project root and src directory to sys.path so sibling packages are importable
@@ -33,7 +36,11 @@ from accumulate.accumulate_component import (
     load_updated_state as acc_load_state,
     save_updated_state as acc_save_state,
     process_immediate_report as acc_process,
-    process_with_pvm
+    process_with_pvm,
+    PVMConfig,
+    PVMError,
+    PVMConnectionError,
+    PVMResponseError
 )
 
 # Configure logging
@@ -51,7 +58,7 @@ app = FastAPI(
 class AuthorizationRequest(BaseModel):
     public_key: str
     signature: str
-    nonce: int
+    nonce: int | None = None  # Optional, will be managed server-side
     payload: Dict[str, Any]
 
 # Pydantic model for authorization response
@@ -60,6 +67,7 @@ class AuthorizationResponse(BaseModel):
     message: str
     auth_output: Optional[str] = None
     updated_state: Optional[Dict[str, Any]] = None
+    pvm_response: Optional[Dict[str, Any]] = None
 
 # Add CORS middleware
 app.add_middleware(
@@ -544,7 +552,7 @@ def load_updated_state():
         logger.error(f"Failed to load updated state: {str(e)}")
         return deepcopy(DEFAULT_SAMPLE_DATA["pre_state"])
 
-def run_reports_component():
+def run_reports_component(input_data: Optional[Dict[str, Any]] = None):
     """Run the Reports component (run_jam_vectors.py) if available."""
     reports_script = os.path.join(project_root, "Reports-Python", "scripts", "run_jam_vectors.py")
     logger.info(f"Preparing to run Reports component at: {reports_script}")
@@ -553,6 +561,13 @@ def run_reports_component():
         return True, "Reports component not found, skipping"
     try:
         cmd = ["python3", reports_script]
+        
+        # If input_data is provided, pass it as a JSON string argument
+        if input_data is not None:
+            input_str = json.dumps(input_data)
+            cmd.extend(["--input", input_str])
+            logger.debug(f"Passing input to Reports component: {input_str[:200]}...")
+        
         logger.info(f"Running Reports component with command: {' '.join(cmd)}")
         result = subprocess.run(
             cmd,
@@ -813,7 +828,8 @@ def deep_merge(dict1, dict2):
 
 def create_updated_state_file(new_state_data: Dict[str, Any], block_input: Dict[str, Any]):
     """Update the updated_state.json file with new state information while preserving existing data."""
-    temp_path = f"{updated_state_path}.tmp"
+    # Create directory if it doesn't exist
+    os.makedirs(os.path.dirname(updated_state_path), exist_ok=True)
     
     try:
         # Start with a deep copy of the original sample data as our base
@@ -888,15 +904,9 @@ def create_updated_state_file(new_state_data: Dict[str, Any], block_input: Dict[
             "updated_by": "server"
         })
         
-        # Create directory if it doesn't exist
-        os.makedirs(os.path.dirname(updated_state_path), exist_ok=True)
-        
-        # Write to a temporary file first
-        with open(temp_path, 'w') as f:
+        # Write directly to the target file without using a temporary file
+        with open(updated_state_path, 'a') as f:
             json.dump(updated_data, f, indent=2, sort_keys=True, default=str)
-        
-        # Atomically replace the old file with the new one
-        os.replace(temp_path, updated_state_path)
         
         logger.info(f"Successfully updated state file at {updated_state_path}")
         logger.debug(f"Updated state content: {json.dumps(updated_data, indent=2, default=str)}")
@@ -904,12 +914,6 @@ def create_updated_state_file(new_state_data: Dict[str, Any], block_input: Dict[
         
     except Exception as e:
         logger.error(f"Failed to update state file: {str(e)}", exc_info=True)
-        # Clean up temporary file if it exists
-        if 'temp_path' in locals() and os.path.exists(temp_path):
-            try:
-                os.remove(temp_path)
-            except Exception as cleanup_error:
-                logger.error(f"Failed to clean up temporary file: {str(cleanup_error)}")
         return False
 
 # Alias for backward compatibility
@@ -1461,10 +1465,279 @@ async def health_check():
         "version": "1.0.0"
     }
 
-@app.post("/authorize", response_model=AuthorizationResponse)
+class AuthorizationRequest(BaseModel):
+    public_key: str
+    signature: str
+    payload: Dict[str, Any]
+
+@app.post("/authorize")
+async def handle_authorization(request: AuthorizationRequest):
+    """
+    Handle authorization request and forward to PVM.
+    
+    Args:
+        request: Authorization request containing:
+            - public_key: Hex-encoded public key
+            - signature: Hex-encoded signature
+            - payload: Authorization payload
+            
+    Returns:
+        Dict containing authorization response with status and nonce
+        
+    Raises:
+        HTTPException: If there's an error processing the request
+    """
+    try:
+        logger.info(f"Received authorization request for public key: {request.public_key}")
+        
+        # Call the secure authorize function
+        response = await authorize(request)
+        
+        # Get the nonce from the updated state
+        nonce = 0
+        try:
+            with open('updated_state.json', 'r') as f:
+                current_state = json.load(f)
+                nonce = current_state.get("authorizations", {}).get(request.public_key, {}).get("nonce", 0)
+        except (FileNotFoundError, json.JSONDecodeError):
+            logger.warning("Could not read updated_state.json, using default nonce 0")
+        
+        # Convert the response to a dictionary
+        response_dict = {
+            "authorized": response.success,
+            "public_key": request.public_key,
+            "nonce": nonce,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "message": response.message
+        }
+        
+        # Add PVM response if available
+        if hasattr(response, 'pvm_response') and response.pvm_response:
+            response_dict["pvm_response"] = response.pvm_response
+            
+        return response_dict
+        
+    except Exception as e:
+        logger.error(f"Authorization error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Authorization failed: {str(e)}"
+        )
+
+async def forward_authorization_to_pvm(public_key: str, signature: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Forward authorization request to the PVM (Polkadot Virtual Machine).
+    
+    Args:
+        public_key: The public key of the requester (hex string without 0x prefix)
+        signature: The signature to verify (hex string without 0x prefix)
+        payload: The authorization payload
+        
+    Returns:
+        Dict containing the PVM response
+        
+    Raises:
+        PVMError: If there's an error communicating with the PVM
+    """
+    try:
+        config = PVMConfig()
+        if not config.base_url:
+            logger.warning("PVM base URL not configured, skipping PVM authorization")
+            return None
+            
+        # Load current state to get the nonce
+        try:
+            with open('updated_state.json', 'r') as f:
+                current_state = json.load(f)
+        except FileNotFoundError:
+            current_state = {"authorizations": {}, "nonces": {}}
+            
+        # The PVM expects SCALE-encoded AuthCredentials in hex format
+        # AuthCredentials struct: { public_key: [u8; 32], signature: [u8; 64], nonce: u64 }
+        
+        # Convert public key and signature to bytes
+        try:
+            public_key_bytes = bytes.fromhex(public_key)
+            signature_bytes = bytes.fromhex(signature)
+            if len(public_key_bytes) != 32:
+                raise ValueError(f"Public key must be 32 bytes, got {len(public_key_bytes)}")
+            if len(signature_bytes) != 64:
+                raise ValueError(f"Signature must be 64 bytes, got {len(signature_bytes)}")
+        except ValueError as e:
+            error_msg = f"Invalid hex string in public key or signature: {str(e)}"
+            logger.error(error_msg)
+            raise PVMError(error_msg) from e
+        
+        # Get the current nonce for this public key
+        nonce = current_state.get('nonces', {}).get(public_key, 0)
+        
+        # Create SCALE-encoded AuthCredentials
+        # SCALE encoding for struct: field1 + field2 + field3 (no length prefix for fixed-size arrays)
+        auth_credentials = (
+            public_key_bytes +  # public_key: [u8; 32]
+            signature_bytes +   # signature: [u8; 64]
+            nonce.to_bytes(8, 'little')  # nonce: u64 (little-endian)
+        )
+        
+        # Create the work package in the format expected by the PVM
+        # Based on the PVM code, WorkPackage has an 'items' field which is a vector of WorkItem
+        # Each WorkItem has a 'payload' field which is a Vec<u8>
+        
+        # Create the payload as a JSON object
+        work_item_payload = json.dumps(payload).encode('utf-8')
+        
+        # SCALE encoding for WorkPackage:
+        # 1. Compact length of items vector (1 byte for 1 item: 0x04)
+        # 2. For each item: compact length of payload (1 byte for small payloads) + payload bytes
+        
+        # For small payloads (<= 63 bytes), the length is encoded as (length << 2) | 0x00
+        payload_length = len(work_item_payload)
+        if payload_length <= 63:
+            length_prefix = (payload_length << 2).to_bytes(1, 'little')
+        else:
+            # For larger payloads, we'd need more complex encoding
+            raise ValueError(f"Payload too large: {payload_length} bytes (max 63)")
+        
+        # Construct the work package
+        work_package = (
+            b'\x04' +          # Compact encoded length 1 (1 << 2 | 0)
+            length_prefix +     # Compact length of payload
+            work_item_payload   # Actual payload bytes
+        )
+        
+        logger.debug(f"Work package payload: {work_item_payload}")
+        logger.debug(f"Work package hex: {work_package.hex()}")
+        
+        # CoreIndex is a u32, SCALE-encoded as 4 little-endian bytes
+        core_index_bytes = (0).to_bytes(4, 'little')
+        
+        logger.info(f"Auth credentials: public_key={public_key}, nonce={nonce}")
+        logger.debug(f"SCALE-encoded auth_credentials: {auth_credentials.hex()}")
+        logger.debug(f"SCALE-encoded work_package: {work_package.hex()}")
+        
+        # Prepare the request data with hex-encoded SCALE-encoded values
+        request_data = {
+            "param_hex": auth_credentials.hex(),
+            "package_hex": work_package.hex(),
+            "core_index_hex": core_index_bytes.hex()
+        }
+        
+        url = f"{config.base_url}/authorizer/is_authorized"
+        logger.info(f"Sending request to PVM at {url}")
+        logger.debug(f"Request data: {request_data}")
+        logger.debug(f"Auth credentials length: {len(auth_credentials)} bytes")
+        logger.debug(f"Work package length: {len(work_package)} bytes")
+        
+        try:
+            async with httpx.AsyncClient() as client:
+                # Make the request with detailed logging
+                logger.debug(f"Sending POST request to {url} with data: {request_data}")
+                response = await client.post(
+                    url,
+                    json=request_data,
+                    timeout=config.timeout
+                )
+                
+                # Log the raw response details
+                logger.info(f"PVM response status: {response.status_code}")
+                logger.debug(f"PVM response headers: {dict(response.headers)}")
+                
+                # Get the raw response text
+                response_text = response.text.strip()
+                logger.info(f"PVM raw response: {response_text}")
+                
+                # Check for HTTP errors (this will raise an exception for 4XX/5XX responses)
+                response.raise_for_status()
+                
+                # Try to parse the response as JSON
+                try:
+                    response_json = response.json()
+                    logger.debug(f"PVM JSON response: {response_json}")
+                    
+                    # Construct response in the format expected by AuthorizationResponse
+                    if 'output_hex' in response_json:
+                        logger.info("Successfully received authorization response from PVM")
+                        return {
+                            "success": True,
+                            "message": "Authorization successful",
+                            "auth_output": response_json.get('output_hex'),
+                            "pvm_response": response_json
+                        }
+                    else:
+                        error_msg = f"Unexpected response format from PVM: {response_json}"
+                        logger.error(error_msg)
+                        return {
+                            "success": False,
+                            "message": error_msg,
+                            "pvm_response": response_json
+                        }
+                        
+                except json.JSONDecodeError:
+                    logger.warning(f"PVM returned non-JSON response: {response_text}")
+                    if "failed to decode" in response_text.lower():
+                        error_msg = "PVM failed to decode the request. Check the format of auth_credentials and work_package."
+                        logger.error(error_msg)
+                    else:
+                        error_msg = f"PVM returned non-JSON response: {response_text}"
+                    
+                    return {
+                        "success": False,
+                        "message": error_msg,
+                        "pvm_response": {"raw_response": response_text}
+                    }
+                
+        except httpx.HTTPStatusError as e:
+            error_msg = f"HTTP error from PVM: {str(e)}"
+            logger.error(error_msg)
+            error_detail = {"status_code": e.response.status_code}
+            if e.response is not None:
+                try:
+                    error_detail.update(e.response.json())
+                    logger.error(f"PVM error details: {error_detail}")
+                except:
+                    error_detail["raw_response"] = e.response.text
+                    logger.error(f"PVM error response: {e.response.text}")
+            
+            return {
+                "success": False,
+                "message": error_msg,
+                "pvm_response": error_detail
+            }
+            
+        except httpx.RequestError as e:
+            error_msg = f"Failed to connect to PVM at {url}: {str(e)}"
+            logger.error(error_msg)
+            return {
+                "success": False,
+                "message": error_msg,
+                "pvm_response": {"error": "connection_failed", "details": str(e)}
+            }
+            
+        except Exception as e:
+            error_msg = f"Unexpected error during PVM communication: {str(e)}"
+            logger.exception(error_msg)
+            return {
+                "success": False,
+                "message": error_msg,
+                "pvm_response": {"error": "unexpected_error", "details": str(e)}
+            }
+            
+    except httpx.HTTPStatusError as e:
+        error_msg = f"PVM returned error: {e.response.status_code} - {e.response.text}"
+        logger.error(error_msg)
+        raise PVMResponseError(error_msg) from e
+    except httpx.RequestError as e:
+        error_msg = f"PVM request failed: {str(e)}"
+        logger.error(error_msg)
+        raise PVMConnectionError(error_msg) from e
+    except Exception as e:
+        error_msg = f"Unexpected error during PVM authorization: {str(e)}"
+        logger.error(error_msg)
+        raise PVMError(error_msg) from e
+
 async def authorize(request: AuthorizationRequest):
     """
-    Handle authorization requests.
+    Handle authorization requests using the authorization processor.
     
     Args:
         request: Authorization request containing public key, signature, nonce, and payload
@@ -1473,61 +1746,52 @@ async def authorize(request: AuthorizationRequest):
         Authorization response with success status and updated state
     """
     try:
-        # Verify the signature
-        try:
-            public_key_bytes = bytes.fromhex(request.public_key)
-            signature_bytes = bytes.fromhex(request.signature)
-            message = json.dumps(request.payload, sort_keys=True).encode()
+        # Prepare input data for authorization processor
+        input_data = {
+            "public_key": request.public_key,
+            "signature": request.signature,
+            "payload": request.payload,
+            "slot": request.payload.get("slot", 0),
+            "auths": request.payload.get("auths", [])
+        }
+        
+        # If auths are not provided in payload, create one from the request
+        if not input_data["auths"] and request.public_key:
+            # Create auth hash for this authorization
+            auth_hash = authorization_processor.create_auth_hash(
+                request.public_key, 
+                request.payload, 
+                input_data["slot"]
+            )
             
-            # Verify signature using PyNaCl (ed25519-dalek compatible)
-            verify_key = nacl.signing.VerifyKey(public_key_bytes)
-            verify_key.verify(message, signature_bytes)
-            
-        except Exception as e:
+            input_data["auths"] = [{
+                "core": request.payload.get("core", 0),
+                "auth_hash": auth_hash
+            }]
+        
+        # Process authorization using the processor
+        result = await authorization_processor.process_authorization(input_data)
+        
+        if result["success"]:
+            return AuthorizationResponse(
+                success=True,
+                message=result["message"],
+                auth_output=authorization_processor.create_auth_hash(
+                    request.public_key, 
+                    request.payload, 
+                    result["slot"]
+                ),
+                updated_state=result["post_state"]
+            )
+        else:
             return AuthorizationResponse(
                 success=False,
-                message=f"Invalid signature: {str(e)}"
+                message=result["message"],
+                updated_state=result.get("pre_state")
             )
-        
-        # Load current state
-        try:
-            with open('updated_state.json', 'r') as f:
-                current_state = json.load(f)
-        except FileNotFoundError:
-            current_state = {"authorizations": {}}
-        
-        # Update state with new authorization
-        auth_key = request.public_key
-        if "authorizations" not in current_state:
-            current_state["authorizations"] = {}
-            
-        current_state["authorizations"][auth_key] = {
-            "public_key": request.public_key,
-            "nonce": request.nonce,
-            "last_updated": datetime.now(timezone.utc).isoformat(),
-            "payload": request.payload
-        }
-        
-        # Save updated state
-        with open('updated_state.json', 'w') as f:
-            json.dump(current_state, f, indent=2)
-        
-        # Generate auth output (hash of the authorization data)
-        auth_data = {
-            "public_key": request.public_key,
-            "nonce": request.nonce,
-            "payload": request.payload
-        }
-        auth_output = sha256(json.dumps(auth_data, sort_keys=True).encode()).hexdigest()
-        
-        return AuthorizationResponse(
-            success=True,
-            message="Authorization successful",
-            auth_output=auth_output,
-            updated_state=current_state
-        )
-        
+                    
     except Exception as e:
+        logger.error(f"Authorization error: {str(e)}")
         return AuthorizationResponse(
             success=False,
             message=f"Authorization failed: {str(e)}"
@@ -1635,16 +1899,42 @@ async def process_block(request: BlockProcessRequest):
                 combined_state[key] = state_post_state[key]
 
         try:
-            # Update the state file first
-            # Run the Reports component first
-            reports_success, reports_output = run_reports_component()
-            if not reports_success:
-                logger.warning(f"Reports component execution completed with warnings: {reports_output}")
+            # Prepare input for Reports component with guarantees data
+            reports_input = {
+                "guarantees": extrinsic_data.get("guarantees", []),
+                "preimages": extrinsic_data.get("preimages", []),
+                "assurances": extrinsic_data.get("assurances", []),
+                "disputes": extrinsic_data.get("disputes", {})
+            }
+            
+            # Only run Reports component if there are guarantees to process
+            if reports_input["guarantees"]:
+                logger.info(f"Running Reports component with {len(reports_input['guarantees'])} guarantees")
+                reports_success, reports_output = run_reports_component(reports_input)
+                if not reports_success:
+                    logger.warning(f"Reports component execution completed with warnings: {reports_output}")
+            else:
+                logger.info("No guarantees found in input_data, skipping Reports component processing.")
 
-            # Prepare the specific input object for jam-history as per user requirements
+            # Generate header_hash from block header data for jam-history
             header_data = request.block.header.dict()
+            
+            # Create a hash from the header data if not provided
+            if not header_data.get("header_hash"):
+                header_str = json.dumps({
+                    "parent": header_data.get("parent"),
+                    "parent_state_root": header_data.get("parent_state_root"),
+                    "extrinsic_hash": header_data.get("extrinsic_hash"),
+                    "slot": header_data.get("slot"),
+                    "author_index": header_data.get("author_index"),
+                    "entropy_source": header_data.get("entropy_source")
+                }, sort_keys=True)
+                header_hash = sha256(header_str.encode()).hexdigest()
+            else:
+                header_hash = header_data.get("header_hash")
+            
             jam_history_input = {
-                "header_hash": header_data.get("header_hash"),
+                "header_hash": header_hash,
                 "parent_state_root": header_data.get("parent_state_root"),
                 "accumulate_root": header_data.get("accumulate_root"),
                 "work_packages": header_data.get("work_packages", [])

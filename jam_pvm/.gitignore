@@ -182,4 +182,34 @@ curl -X POST http://127.0.0.1:8000/accumulate/process \
       }
     ]
   }'
+
+
+curl -X POST http://127.0.0.1:8000/authorize \
+  -H "Content-Type: application/json" \
+  -d '{
+    "public_key": "2b218e86b49855b30fcd852c9761e43f0841149e1f66b859973fbe0dac0a6e4b",
+    "signature": "bbdfb9162077d44a2e7e5dcb0e421b8129fb821cb629491f4b6662d1007e4261fafb976d55c11552f4751f6f2a1695672771ddfe4b71e5e801cd376da12ff70d",
+    "payload": {
+      "action": "authorize",
+      "data": "test_data"
+    }
+  }'
+{"authorized":true,"public_key":"2b218e86b49855b30fcd852c9761e43f0841149e1f66b859973fbe0dac0a6e4b","nonce":6,"timestamp":"2025-09-15T08:54:47.180765+00:00"}%                         
+(venv) hatim@Hatims-MacBook-Air server % 
+
+
+curl -X POST http://127.0.0.1:8000/authorize \
+  -H "Content-Type: application/json" \
+  -d '{
+    "public_key": "YOUR_PUBLIC_KEY",
+    "signature": "YOUR_SIGNATURE",
+    "payload": {
+      "action": "authorize",
+      "data": "test_data"
+    }
+  }'
+
+
+  curl -X POST http://127.0.0.1:8000/authorize -H "Content-Type: application/json" -d '{"public_key": "eea8ee0a210980e80769293bcbc1c4a79f74c83af48c97c8c0e921d6f1a95ca1", "signature": "eee36664802f8d993d1fcdd59067619267e95ea70685bc0049fe61dddf9108d57a0d0d9bea7a4ded83f244f62d5f90b830df26f82ce2d2d02efd338af6a1d908", "payload": {"service_id": 1, "core": 0, "slot": 100, "work_package": {"items": [{"service_id": 1, "payload_data": "Hello JAM Authorization!", "gas_limit": 1000000}]}}}'
+
 You can copy and paste these commands directly into your terminal. The responses will show you the processing results and any potential errors.
