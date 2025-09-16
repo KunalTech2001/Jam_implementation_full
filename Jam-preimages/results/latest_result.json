@@ -2,27 +2,35 @@
   "input": {
     "preimages": [
       {
-        "requester": 1,
-        "blob": "0x1234567890abcdef"
-      },
-      {
-        "requester": 1,
-        "blob": "0xdeadbeefcafebabe"
+        "requester": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "blob": "0x92cdf578c47085a5992256f0dcf97d0b19f1f1c9de4d5fe30c3ace6191b6e5dbcee1b3419782ad92ec2dffed6d3f"
       }
-    ],
-    "slot": 1755948353
+    ]
   },
-  "pre_state": {
-    "accounts": [],
-    "statistics": []
-  },
+  "pre_state": {},
   "generated_post_state": {
     "accounts": [
       {
-        "id": 1,
+        "id": "0x0000000000000000000000000000000000000000000000000000000000000000",
         "data": {
-          "preimages": [],
-          "lookup_meta": []
+          "preimages": [
+            {
+              "hash": "0xbcd2809123ed9609c510f5629a90a80c7d4c2d8b6b68b462b8ac6ee100431e73",
+              "blob": "0x92cdf578c47085a5992256f0dcf97d0b19f1f1c9de4d5fe30c3ace6191b6e5dbcee1b3419782ad92ec2dffed6d3f"
+            }
+          ],
+          "lookup_meta": [
+            {
+              "key": {
+                "hash": "0xbcd2809123ed9609c510f5629a90a80c7d4c2d8b6b68b462b8ac6ee100431e73",
+                "length": 46
+              },
+              "value": [
+                0,
+                10
+              ]
+            }
+          ]
         }
       }
     ],

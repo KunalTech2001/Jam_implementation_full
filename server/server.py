@@ -20,6 +20,7 @@ import subprocess
 from hashlib import sha256
 import nacl.signing
 import base64
+import tempfile
 from auth_integration import authorization_processor
 
 
@@ -632,8 +633,16 @@ def run_jam_history(payload: Optional[Dict[str, Any]] = None):
         return False, str(e)
 
 
-def run_jam_preimages():
-    """Run the jam-preimages component (main.py) if available."""
+def run_jam_preimages(preimages=None):
+    """
+    Run the jam-preimages component (main.py) if available.
+    
+    Args:
+        preimages: List of preimage objects with 'requester' and 'blob' fields
+        
+    Returns:
+        tuple: (success: bool, output: str)
+    """
     # Get the directory of the current script
     current_dir = os.path.dirname(os.path.abspath(__file__))
     # Navigate to the jam-preimages directory
@@ -646,25 +655,45 @@ def run_jam_preimages():
         return True, "jam-preimages component not found, skipping"
     
     try:
-        # Run the main.py script
-        result = subprocess.run(
-            ["python3", main_script],
-            cwd=jam_preimages_dir,
-            capture_output=True,
-            text=True
-        )
+        # Prepare input data in the expected format
+        input_data = {
+            "preimages": preimages or [],
+            "pre_state": load_updated_state()
+        }
         
-        if result.returncode != 0:
-            logger.error(f"jam-preimages failed with error: {result.stderr}")
-            return False, result.stderr
+        # Create a temporary file for input
+        with tempfile.NamedTemporaryFile(mode='w+', suffix='.json', delete=False) as temp_file:
+            json.dump(input_data, temp_file)
+            temp_file_path = temp_file.name
+        
+        try:
+            # Run the main.py script with the input file
+            result = subprocess.run(
+                ["python3", main_script, "--input", temp_file_path],
+                cwd=jam_preimages_dir,
+                capture_output=True,
+                text=True
+            )
             
-        logger.info("jam-preimages executed successfully")
-        return True, result.stdout
+            if result.returncode != 0:
+                logger.error(f"jam-preimages failed with error: {result.stderr}")
+                return False, result.stderr
+                
+            logger.info("jam-preimages executed successfully")
+            return True, result.stdout
+            
+        finally:
+            # Clean up the temporary file
+            try:
+                os.unlink(temp_file_path)
+            except Exception as e:
+                logger.warning(f"Failed to clean up temporary file {temp_file_path}: {str(e)}")
         
     except Exception as e:
         # Log the error but don't fail the entire process
         error_msg = f"Error running jam-preimages: {str(e)}"
-        logger.debug(error_msg)  # Use debug level to avoid cluttering logs
+        logger.error(error_msg)
+        return False, error_msg
         return True, error_msg  # Still return success to continue processing
 
 
@@ -1133,14 +1162,7 @@ def process_disputes(input_data, pre_state, file_path):
     return {"ok": {"offenders_mark": offenders_mark}}, post_state
 
 def init_empty_stats(num_validators: int) -> List[Dict[str, Any]]:
-    """Initialize empty validator stats for epoch change.
-    
-    Args:
-        num_validators: Number of validators to initialize stats for
-        
-    Returns:
-        List of validator stats dictionaries with PVM-related fields
-    """
+
     return [{
         # Core stats
         "blocks": 0,
@@ -1159,17 +1181,7 @@ def process_pvm_state(
     input_data: Dict[str, Any], 
     pre_state: Dict[str, Any]
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-    """Process PVM state transitions and accumulate component integration.
     
-    Args:
-        input_data: Block input data including PVM operations
-        pre_state: Current blockchain state
-        
-    Returns:
-        Tuple of (updated_state, pvm_responses) where:
-        - updated_state: State with PVM updates applied
-        - pvm_responses: Responses from PVM operations
-    """
     updated_state = deepcopy(pre_state)
     pvm_responses = {}
     
@@ -1260,18 +1272,7 @@ def process_pvm_state(
     return updated_state, pvm_responses
 
 def process_blockchain(input_data: Dict[str, Any], pre_state: Dict[str, Any], is_epoch_change: bool) -> tuple:
-    """Process state component per JAM protocol section 13.1 with PVM integration.
     
-    Args:
-        input_data: Block input data including slot, author_index, and extrinsic
-        pre_state: Current blockchain state
-        is_epoch_change: Whether this is an epoch boundary
-        
-    Returns:
-        Tuple of (result_dict, post_state) where result_dict contains either
-        {"ok": output} on success or {"err": error_message} on failure,
-        and post_state is the updated state dictionary
-    """
     logger.info(f"Memory before state processing: {psutil.Process().memory_info().rss / 1024 / 1024:.2f} MB")
     
     # Validate pre_state fields
@@ -1947,10 +1948,22 @@ async def process_block(request: BlockProcessRequest):
             if not jam_history_success:
                 logger.error(f"jam_history component failed: {jam_history_output}")
             
-            # Run jam-preimages after jam_history completes
-            jam_preimages_success, jam_preimages_output = run_jam_preimages()
+            # Extract and process preimages from the block
+            preimages = []
+            if hasattr(request.block.extrinsic, 'preimages') and request.block.extrinsic.preimages:
+                preimages = [{
+                    'requester': '0x' + '0' * 64,  # Default requester if not specified
+                    'blob': preimage.blob
+                } for preimage in request.block.extrinsic.preimages]
+                
+                logger.debug(f"Found {len(preimages)} preimages in block")
+            
+            # Run jam-preimages with the extracted preimages
+            jam_preimages_success, jam_preimages_output = run_jam_preimages(preimages=preimages)
             if not jam_preimages_success:
                 logger.warning(f"jam-preimages execution completed with warnings: {jam_preimages_output}")
+            else:
+                logger.info(f"Successfully processed {len(preimages)} preimages")
             
             # Run assurances component last to update the state with assurance data
             assurances_success, assurances_output = run_assurances_component()

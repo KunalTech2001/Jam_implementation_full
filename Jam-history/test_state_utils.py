@@ -11,8 +11,6 @@ def main():
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     state_file = os.path.join(BASE_DIR, "..", "server", "updated_state.json")
     updated_state_path = os.path.normpath(state_file)
-    # Path to the updated_state.json file
-    # updated_state_path = Path('/Users/anish/Desktop/fulljam/Jam_implementation_full/server/updated_state.json')
     
     # Test loading the state
     print("Loading state from:", updated_state_path)

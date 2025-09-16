@@ -7,16 +7,7 @@ from jam_types import State, BetaBlock, MMR, Reported, Input
 from history_stf import keccak256
 
 def extract_input_from_payload(payload: Dict[str, Any]) -> Tuple[Dict[str, Any], List[Dict]]:
-    """
-    Extract input data from the curl payload and work packages.
-    
-    Args:
-        payload: The parsed JSON payload from the curl command
-        
-    Returns:
-        tuple: (input_data, work_packages) where input_data is a dictionary containing input data
-               and work_packages is a list of work packages from the extrinsic
-    """
+
     if not payload or 'block' not in payload:
         return {}, []
         
@@ -44,16 +35,7 @@ def extract_input_from_payload(payload: Dict[str, Any]) -> Tuple[Dict[str, Any],
     return input_data, work_packages
 
 def load_updated_state(file_path: Union[str, Dict[str, Any]]) -> dict:
-    """
-    Load and parse the updated_state.json file or process the provided state data,
-    extracting the required fields for jam_history input and pre_state.
     
-    Args:
-        file_path: Path to the updated_state.json file or the state data dict
-        
-    Returns:
-        dict: Dictionary containing 'input' and 'pre_state' keys with beta state
-    """
     # Default empty state
     state_data = {}
     
@@ -151,17 +133,7 @@ def load_updated_state(file_path: Union[str, Dict[str, Any]]) -> dict:
     }
 
 def save_updated_state(file_path: str, state_data: dict, new_beta_block: Optional[Dict] = None) -> bool:
-    """
-    Save the current state to the updated_state.json file and update beta state if provided.
-    
-    Args:
-        file_path: Path to save the updated_state.json file
-        state_data: Dictionary containing the complete state to save
-        new_beta_block: Optional new beta block to append to the beta list
-        
-    Returns:
-        True if successful, False otherwise
-    """
+  
     try:
         # Load existing state if file exists
         existing_state = {}

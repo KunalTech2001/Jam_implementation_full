@@ -218,7 +218,7 @@ def main():
         return
         
     # Debug: Print the full payload structure for inspection
-    print(f"ℹ️  Payload structure: {json.dumps(payload, indent=2)}")
+    # print(f"ℹ️  Payload structure: {json.dumps(payload, indent=2)}")
     
     # The payload comes directly with the required fields, no need for 'block' or 'header' nesting
     header_hash = payload.get('header_hash')
@@ -235,10 +235,10 @@ def main():
         print("❌ Error: 'parent_state_root' is required in payload")
         return
         
-    print(f"ℹ️  Using header_hash: {header_hash}")
-    print(f"ℹ️  Using parent_state_root: {parent_state_root}")
-    print(f"ℹ️  Using accumulate_root: {accumulate_root}")
-    print(f"ℹ️  Found {len(work_packages)} work packages")
+    # print(f"ℹ️  Using header_hash: {header_hash}")
+    # print(f"ℹ️  Using parent_state_root: {parent_state_root}")
+    # print(f"ℹ️  Using accumulate_root: {accumulate_root}")
+    # print(f"ℹ️  Found {len(work_packages)} work packages")
     
     input_data = {
         'header_hash': header_hash,
@@ -247,7 +247,7 @@ def main():
         'work_packages': work_packages
     }
     
-    print(f"ℹ️  Extracted input data: {json.dumps(input_data, indent=2)}")
+    # print(f" Extracted input data: {json.dumps(input_data, indent=2)}")
     
     # Create current state from pre_state
     current_state = create_state_from_dict(pre_state)
@@ -266,7 +266,7 @@ def main():
     # Create input object for state transition
     try:
         input_obj = create_input_from_dict(input_data)
-        print(f"✅ Created input object: {input_obj}")
+        # print(f"✅ Created input object: {input_obj}")
         
         # Perform state transition
         stf = HistorySTF()
@@ -298,7 +298,7 @@ def main():
         with open(server_state_path, 'w') as f:
             json.dump(server_state, f, indent=2)
         
-        print(f"✅ State transition successful. Updated state saved to {server_state_path}")
+        # print(f"✅ State transition successful. Updated state saved to {server_state_path}")
         
         # Also save to results for reference
         output_path = results_dir / 'latest_result.json'
@@ -326,7 +326,7 @@ def main():
         with open(updated_state_path, 'r') as f:
             state_dict = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
-        print(f"ℹ️  {updated_state_path} not found or invalid, starting with empty state")
+        print(f" {updated_state_path} not found or invalid, starting with empty state")
         state_dict = {'beta': []}
     
     # Get the latest beta block from state
@@ -336,8 +336,8 @@ def main():
     input_data, work_packages = extract_input_from_payload(payload)
     
     # Debug output
-    print("ℹ️  Latest beta block:", json.dumps(latest_beta, indent=2))
-    print("ℹ️  Extracted work packages:", json.dumps(work_packages, indent=2))
+    print(" Latest beta block:", json.dumps(latest_beta, indent=2))
+    print("  Extracted work packages:", json.dumps(work_packages, indent=2))
     
     # If header_hash is not in the payload, try to generate it from the block header
     if not input_data.get('header_hash') and 'block' in payload and 'header' in payload['block']:
@@ -345,7 +345,7 @@ def main():
         import hashlib
         header_str = json.dumps(payload['block']['header'], sort_keys=True).encode()
         input_data['header_hash'] = '0x' + hashlib.sha256(header_str).hexdigest()
-        print(f"ℹ️  Generated header_hash: {input_data['header_hash']}")
+        print(f" Generated header_hash: {input_data['header_hash']}")
     
     # Validate required fields
     required_fields = ['header_hash', 'parent_state_root']
@@ -355,13 +355,13 @@ def main():
         print("Payload structure:", json.dumps(payload, indent=2))
         return
     
-    print(f"ℹ️  Extracted input data: {json.dumps(input_data, indent=2)}")
+    print(f" Extracted input data: {json.dumps(input_data, indent=2)}")
     
     # Ensure accumulate_root has a default value if not provided
     if 'accumulate_root' not in input_data or not input_data['accumulate_root']:
         input_data['accumulate_root'] = '0x' + '0' * 64
             
-    print("ℹ️  Using input data from curl payload")
+    print(" Using input data from curl payload")
     
     try:
         print("🔄 Jam_History is processing input...")
@@ -420,12 +420,12 @@ def main():
         output_path = os.path.join(os.path.dirname(updated_state_path), 'output_state.json')
         with open(output_path, 'w') as f:
             json.dump(serializable_post_state, f, indent=2)
-        print(f"💾 Updated state saved to {output_path}")
+        print(f"Updated state saved to {output_path}")
         
         # Also update the main updated_state.json with the new beta block
         with open(updated_state_path, 'w') as f:
             json.dump(serializable_post_state, f, indent=2)
-        print(f"💾 Updated state saved to {updated_state_path}")
+        print(f" Updated state saved to {updated_state_path}")
         
         # Save result to results directory
         result_path = results_dir / 'latest_result.json'
